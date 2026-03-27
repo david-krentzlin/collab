@@ -8,6 +8,9 @@ A filesystem-based communication protocol for AI agents working on the same code
 .collab/
   default/                # task/feature namespace (from COLLAB_TASK)
     .seq                  # per-task global sequence counter
+    .seq.lock             # file lock for sequence allocation
+    .index.jsonl          # append-only metadata index (seq->path, summary, status)
+    .index.lock           # file lock for index updates
     agent-a/
       001-inquiry.md      # agent-a's outgoing messages
       003-reply.md
@@ -32,8 +35,7 @@ summary: "Should we use a mutex for the seq counter?"
 status: open
 ---
 
-The seq file is read-then-write without locking.
-Two agents could collide. Should we use flock?
+Sequence allocation uses a lock file and optimistic retry around `.seq` updates.
 ```
 
 ### Fields
@@ -93,7 +95,7 @@ collab resolve 1
 1. **`check`** returns only summaries — one line per message
 2. **`read`** fetches full body on demand
 3. **`summary`** field is mandatory — agents write it for each other
-4. Agents track `last_seen_seq` and pass `--since` to avoid rescanning
+4. `check` and `read` use the metadata index to avoid directory rescans
 5. Messages live in per-agent directories — no shared mutable state
 
 ## OpenCode Integration
