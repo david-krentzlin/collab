@@ -150,6 +150,36 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			m.handleMoveDown()
 			return m, nil
+		case "K":
+			if m.focusedPane == focusThreads {
+				m.moveConversationByThread(-1)
+			}
+			return m, nil
+		case "J":
+			if m.focusedPane == focusThreads {
+				m.moveConversationByThread(1)
+			}
+			return m, nil
+		case "g":
+			switch m.focusedPane {
+			case focusTasks:
+				m.moveTaskToBoundary(true)
+			case focusThreads:
+				m.moveConversationToBoundary(true)
+			case focusDetails:
+				m.detailsViewport.GotoTop()
+			}
+			return m, nil
+		case "G":
+			switch m.focusedPane {
+			case focusTasks:
+				m.moveTaskToBoundary(false)
+			case focusThreads:
+				m.moveConversationToBoundary(false)
+			case focusDetails:
+				m.detailsViewport.GotoBottom()
+			}
+			return m, nil
 		case "pgup", "b":
 			switch m.focusedPane {
 			case focusDetails:
@@ -790,6 +820,15 @@ func firstSelectableConversationRow(rows []conversationRow) int {
 	return 0
 }
 
+func lastSelectableConversationRow(rows []conversationRow) int {
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i].selectable {
+			return i
+		}
+	}
+	return 0
+}
+
 func (m *tuiModel) selectedMessageReferenceSeq() int {
 	msg, ok := m.messageBySeq[m.selectedMessageSeq]
 	if !ok || msg == nil {
@@ -1278,16 +1317,69 @@ func (m *tuiModel) moveConversationSelection(delta int) {
 			return
 		}
 		if m.conversationRows[idx].selectable {
-			m.selectedRowIdx = idx
-			m.selectedMessageSeq = m.conversationRows[idx].seq
-			m.selectedThreadRoot = m.conversationRows[idx].rootSeq
-			m.autoFollow = false
-			m.refreshConversationViewportContent()
-			m.ensureSelectedConversationVisible()
-			m.refreshDetailsFromSelection()
+			m.selectConversationRow(idx, true)
 			return
 		}
 	}
+}
+
+func (m *tuiModel) moveConversationByThread(delta int) {
+	if len(m.conversationRows) == 0 || delta == 0 {
+		return
+	}
+	if m.renderMode != renderModeThreaded {
+		m.moveConversationSelection(delta)
+		return
+	}
+	if m.selectedRowIdx < 0 || m.selectedRowIdx >= len(m.conversationRows) {
+		m.selectedRowIdx = firstSelectableConversationRow(m.conversationRows)
+	}
+
+	currentRoot := 0
+	if m.selectedRowIdx >= 0 && m.selectedRowIdx < len(m.conversationRows) {
+		currentRoot = m.conversationRows[m.selectedRowIdx].rootSeq
+	}
+
+	idx := m.selectedRowIdx
+	for {
+		idx += delta
+		if idx < 0 || idx >= len(m.conversationRows) {
+			return
+		}
+		row := m.conversationRows[idx]
+		if row.kind == "thread-header" && row.selectable && row.rootSeq != currentRoot {
+			m.selectConversationRow(idx, true)
+			return
+		}
+	}
+}
+
+func (m *tuiModel) moveConversationToBoundary(top bool) {
+	if len(m.conversationRows) == 0 {
+		return
+	}
+
+	idx := lastSelectableConversationRow(m.conversationRows)
+	if top {
+		idx = firstSelectableConversationRow(m.conversationRows)
+	}
+	m.selectConversationRow(idx, true)
+}
+
+func (m *tuiModel) selectConversationRow(idx int, disableFollow bool) {
+	if idx < 0 || idx >= len(m.conversationRows) || !m.conversationRows[idx].selectable {
+		return
+	}
+
+	m.selectedRowIdx = idx
+	m.selectedMessageSeq = m.conversationRows[idx].seq
+	m.selectedThreadRoot = m.conversationRows[idx].rootSeq
+	if disableFollow {
+		m.autoFollow = false
+	}
+	m.refreshConversationViewportContent()
+	m.ensureSelectedConversationVisible()
+	m.refreshDetailsFromSelection()
 }
 
 func (m *tuiModel) toggleSelectedThreadCollapse() {
@@ -1325,6 +1417,25 @@ func (m *tuiModel) moveTaskSelection(delta int) {
 	}
 	if next >= len(m.tasks) {
 		next = len(m.tasks) - 1
+	}
+	if next == m.selectedTaskIdx {
+		return
+	}
+
+	m.selectedTaskIdx = next
+	m.autoFollow = true
+	m.markSelectedTaskSeen()
+	_ = m.refreshSelectedConversation()
+}
+
+func (m *tuiModel) moveTaskToBoundary(top bool) {
+	if len(m.tasks) == 0 {
+		return
+	}
+
+	next := len(m.tasks) - 1
+	if top {
+		next = 0
 	}
 	if next == m.selectedTaskIdx {
 		return

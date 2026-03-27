@@ -143,6 +143,90 @@ func TestTUIModelUpDownOnThreadsChangesSelectedMessageAndDetails(t *testing.T) {
 	}
 }
 
+func TestTUIModelShiftJKMovesByThreadNotMessage(t *testing.T) {
+	root := t.TempDir()
+	s := initTaskStore(t, root, "thread-jump")
+	root1 := createThreadMessage(t, s, 0, "alice", "root-1")
+	_ = createThreadMessage(t, s, root1, "bob", "child-1")
+	root2 := createThreadMessage(t, s, 0, "alice", "root-2")
+	_ = createThreadMessage(t, s, root2, "bob", "child-2")
+	root3 := createThreadMessage(t, s, 0, "alice", "root-3")
+	_ = createThreadMessage(t, s, root3, "bob", "child-3")
+
+	m := newTUIModelForBase(filepath.Join(root, store.CollabDir))
+	if err := m.refreshTasksFromDisk(); err != nil {
+		t.Fatalf("refresh tasks: %v", err)
+	}
+	m.selectedTaskIdx = findTaskIndex(t, m, "thread-jump")
+	m.renderMode = renderModeThreaded
+	m.focusedPane = focusThreads
+	if err := m.refreshSelectedConversation(); err != nil {
+		t.Fatalf("refresh selected conversation: %v", err)
+	}
+
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // move onto child-1
+	m = next.(*tuiModel)
+	if m.conversationRows[m.selectedRowIdx].kind != "message" {
+		t.Fatalf("test setup failed: expected message row selected, got %q", m.conversationRows[m.selectedRowIdx].kind)
+	}
+
+	next, _ = m.Update(tea.KeyPressMsg{Code: 'J', Text: "J"})
+	m = next.(*tuiModel)
+	if m.selectedMessageSeq != root2 {
+		t.Fatalf("expected Shift+J to jump to next thread header #%d, got #%d", root2, m.selectedMessageSeq)
+	}
+	if m.conversationRows[m.selectedRowIdx].kind != "thread-header" {
+		t.Fatalf("expected Shift+J to land on thread header, got %q", m.conversationRows[m.selectedRowIdx].kind)
+	}
+
+	next, _ = m.Update(tea.KeyPressMsg{Code: 'K', Text: "K"})
+	m = next.(*tuiModel)
+	if m.selectedMessageSeq != root1 {
+		t.Fatalf("expected Shift+K to jump to previous thread header #%d, got #%d", root1, m.selectedMessageSeq)
+	}
+	if m.conversationRows[m.selectedRowIdx].kind != "thread-header" {
+		t.Fatalf("expected Shift+K to land on thread header, got %q", m.conversationRows[m.selectedRowIdx].kind)
+	}
+}
+
+func TestTUIModelGAndShiftGJumpToTopAndBottomInThreads(t *testing.T) {
+	root := t.TempDir()
+	s := initTaskStore(t, root, "thread-top-bottom")
+	root1 := createThreadMessage(t, s, 0, "alice", "root-1")
+	_ = createThreadMessage(t, s, root1, "bob", "child-1")
+	root2 := createThreadMessage(t, s, 0, "alice", "root-2")
+	_ = createThreadMessage(t, s, root2, "bob", "child-2")
+	root3 := createThreadMessage(t, s, 0, "alice", "root-3")
+	lastSeq := createThreadMessage(t, s, root3, "bob", "child-3")
+
+	m := newTUIModelForBase(filepath.Join(root, store.CollabDir))
+	if err := m.refreshTasksFromDisk(); err != nil {
+		t.Fatalf("refresh tasks: %v", err)
+	}
+	m.selectedTaskIdx = findTaskIndex(t, m, "thread-top-bottom")
+	m.renderMode = renderModeThreaded
+	m.focusedPane = focusThreads
+	m.setSize(100, 10)
+	m.autoFollow = false
+	if err := m.refreshSelectedConversation(); err != nil {
+		t.Fatalf("refresh selected conversation: %v", err)
+	}
+
+	next, _ := m.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
+	m = next.(*tuiModel)
+	if m.selectedMessageSeq != lastSeq {
+		t.Fatalf("expected Shift+G to jump to bottom selectable row #%d, got #%d", lastSeq, m.selectedMessageSeq)
+	}
+	assertSelectedRowVisibleInThreadsViewport(t, m)
+
+	next, _ = m.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
+	m = next.(*tuiModel)
+	if m.selectedMessageSeq != root1 {
+		t.Fatalf("expected g to jump to top thread header #%d, got #%d", root1, m.selectedMessageSeq)
+	}
+	assertSelectedRowVisibleInThreadsViewport(t, m)
+}
+
 func TestTUIModelUpDownOnDetailsScrollsDetailsViewport(t *testing.T) {
 	root := t.TempDir()
 	s := store.FindTask(root, "details-scroll")
