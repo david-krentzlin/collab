@@ -10,6 +10,8 @@ import (
 )
 
 var readRaw bool
+var readAgent string
+var readTask string
 
 var readCmd = &cobra.Command{
 	Use:   "read <seq>",
@@ -30,7 +32,10 @@ Use --raw to include the frontmatter.`,
 		if err != nil {
 			return err
 		}
-		s := store.Find(cwd)
+		s := findStoreForTask(cwd, readTask)
+		if _, err := requireKnownAgent(s, readAgent); err != nil {
+			return err
+		}
 
 		msg, err := s.ReadMessage(seq)
 		if err != nil {
@@ -54,5 +59,7 @@ Use --raw to include the frontmatter.`,
 }
 
 func init() {
+	readCmd.Flags().StringVar(&readAgent, "agent", "", "Agent identity (required)")
+	readCmd.Flags().StringVar(&readTask, "task", store.DefaultTask, "Task namespace for message store")
 	readCmd.Flags().BoolVar(&readRaw, "raw", false, "Show full file including frontmatter")
 }

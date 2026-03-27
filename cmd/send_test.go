@@ -12,7 +12,6 @@ import (
 func TestSendRejectsUnknownRecipient(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	t.Setenv("COLLAB_AGENT", "agent-a")
 
 	s := store.Find(root)
 	if err := s.Init([]string{"agent-a", "agent-b"}); err != nil {
@@ -20,6 +19,7 @@ func TestSendRejectsUnknownRecipient(t *testing.T) {
 	}
 
 	resetSendGlobalsForTest()
+	sendAgent = "agent-a"
 	sendTo = "agent-z"
 	sendType = "info"
 	sendSummary = "unknown recipient"
@@ -38,7 +38,6 @@ func TestSendRejectsUnknownRecipient(t *testing.T) {
 func TestSendAllowsBroadcastRecipient(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	t.Setenv("COLLAB_AGENT", "agent-a")
 
 	s := store.Find(root)
 	if err := s.Init([]string{"agent-a", "agent-b"}); err != nil {
@@ -46,6 +45,7 @@ func TestSendAllowsBroadcastRecipient(t *testing.T) {
 	}
 
 	resetSendGlobalsForTest()
+	sendAgent = "agent-a"
 	sendTo = "all"
 	sendType = "info"
 	sendSummary = "broadcast"
@@ -84,6 +84,8 @@ func withTestStdin(t *testing.T, content string, fn func()) {
 }
 
 func resetSendGlobalsForTest() {
+	sendAgent = ""
+	sendTask = store.DefaultTask
 	sendTo = ""
 	sendType = "inquiry"
 	sendRe = 0

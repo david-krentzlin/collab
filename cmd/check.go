@@ -9,6 +9,8 @@ import (
 )
 
 var checkSince int
+var checkAgent string
+var checkTask string
 
 var checkCmd = &cobra.Command{
 	Use:   "check",
@@ -22,21 +24,19 @@ Messages from the caller are excluded from results.`,
 	Example: `  collab check                  # show all messages from others
   collab check --since 4       # only messages after seq 4`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		from := os.Getenv("COLLAB_AGENT")
-		// from can be empty — then we show all messages
-
 		cwd, err := os.Getwd()
 		if err != nil {
 			return err
 		}
-		s := store.Find(cwd)
+		s := findStoreForTask(cwd, checkTask)
+
+		agent, err := requireKnownAgent(s, checkAgent)
+		if err != nil {
+			return err
+		}
 
 		var entries []store.MessageEntry
-		if from == "" {
-			entries, err = s.List(checkSince, "")
-		} else {
-			entries, err = s.ListForRecipient(checkSince, from)
-		}
+		entries, err = s.ListForRecipient(checkSince, agent)
 		if err != nil {
 			return err
 		}
@@ -66,5 +66,7 @@ Messages from the caller are excluded from results.`,
 }
 
 func init() {
+	checkCmd.Flags().StringVar(&checkAgent, "agent", "", "Agent identity for inbox filtering (required)")
+	checkCmd.Flags().StringVar(&checkTask, "task", store.DefaultTask, "Task namespace for message store")
 	checkCmd.Flags().IntVar(&checkSince, "since", 0, "Only show messages with seq > this value")
 }

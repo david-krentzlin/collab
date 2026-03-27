@@ -15,7 +15,6 @@ import (
 const (
 	CollabDir   = ".collab"
 	DefaultTask = "default"
-	TaskEnv     = "COLLAB_TASK"
 	SeqFile     = ".seq"
 	SeqLock     = ".seq.lock"
 	IndexFile   = ".index.jsonl"
@@ -26,18 +25,25 @@ const (
 
 type Store struct {
 	Root string // absolute path to .collab/<task>/
+	Base string // absolute path to .collab/
 	Task string // task identifier (can include subpaths like feature/foo)
 }
 
 // Find walks up from dir to find an existing .collab directory.
 // If none found, returns the default task location (dir/.collab/<task>).
 func Find(dir string) *Store {
+	return FindTask(dir, DefaultTask)
+}
+
+// FindTask walks up from dir to find an existing .collab directory for a task.
+// If none found, returns the default location (dir/.collab/<task>).
+func FindTask(dir, task string) *Store {
 	cur := dir
-	task := resolveTask(os.Getenv(TaskEnv))
+	resolvedTask := resolveTask(task)
 	for {
 		candidate := filepath.Join(cur, CollabDir)
 		if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
-			return &Store{Root: filepath.Join(candidate, task), Task: task}
+			return &Store{Root: filepath.Join(candidate, resolvedTask), Base: candidate, Task: resolvedTask}
 		}
 		parent := filepath.Dir(cur)
 		if parent == cur {
@@ -45,7 +51,8 @@ func Find(dir string) *Store {
 		}
 		cur = parent
 	}
-	return &Store{Root: filepath.Join(dir, CollabDir, task), Task: task}
+	base := filepath.Join(dir, CollabDir)
+	return &Store{Root: filepath.Join(base, resolvedTask), Base: base, Task: resolvedTask}
 }
 
 func resolveTask(raw string) string {

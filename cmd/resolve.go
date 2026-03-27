@@ -26,7 +26,10 @@ var resolveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		s := store.Find(cwd)
+		s := findStoreForTask(cwd, resolveTask)
+		if _, err := requireKnownAgent(s, resolveAgent); err != nil {
+			return err
+		}
 
 		msg, err := s.ReadMessage(seq)
 		if err != nil {
@@ -57,6 +60,11 @@ var resolveCmd = &cobra.Command{
 	},
 }
 
+var (
+	resolveAgent string
+	resolveTask  string
+)
+
 func writeAtomic(path string, data []byte, perm os.FileMode) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".resolve-*.tmp")
 	if err != nil {
@@ -82,4 +90,9 @@ func writeAtomic(path string, data []byte, perm os.FileMode) error {
 	}
 
 	return nil
+}
+
+func init() {
+	resolveCmd.Flags().StringVar(&resolveAgent, "agent", "", "Agent identity (required)")
+	resolveCmd.Flags().StringVar(&resolveTask, "task", store.DefaultTask, "Task namespace for message store")
 }

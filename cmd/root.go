@@ -28,6 +28,7 @@ func init() {
 	rootCmd.AddCommand(checkCmd)
 	rootCmd.AddCommand(readCmd)
 	rootCmd.AddCommand(resolveCmd)
+	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(exportCmd)
 	rootCmd.AddCommand(logCmd)
 }

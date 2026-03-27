@@ -22,11 +22,9 @@ func TestFindUsesDefaultTaskSubdirectory(t *testing.T) {
 	}
 }
 
-func TestFindUsesTaskFromEnv(t *testing.T) {
-	t.Setenv(TaskEnv, "feature/cache-race")
-
+func TestFindTaskUsesProvidedTask(t *testing.T) {
 	root := t.TempDir()
-	s := Find(root)
+	s := FindTask(root, "feature/cache-race")
 
 	want := filepath.Join(root, CollabDir, "feature/cache-race")
 	if s.Root != want {
@@ -49,10 +47,8 @@ func TestInitCreatesSequenceFile(t *testing.T) {
 }
 
 func TestInitCreatesAgentsUnderTaskRoot(t *testing.T) {
-	t.Setenv(TaskEnv, "feature/new-layout")
-
 	base := t.TempDir()
-	s := Find(base)
+	s := FindTask(base, "feature/new-layout")
 	if err := s.Init([]string{"agent-a", "agent-b"}); err != nil {
 		t.Fatalf("init store: %v", err)
 	}

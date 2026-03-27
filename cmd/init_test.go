@@ -123,7 +123,40 @@ func TestInitForceResetsExistingStore(t *testing.T) {
 	}
 }
 
+func TestInitWritesAgentsAndSkillByDefault(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	resetInitGlobalsForTest()
+	initAgents = "agent-a,agent-b"
+
+	if err := initCmd.RunE(initCmd, nil); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	agentsPath := filepath.Join(root, "AGENTS.md")
+	agentsData, err := os.ReadFile(agentsPath)
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	if !strings.Contains(string(agentsData), "## Collaboration via collab") {
+		t.Fatalf("AGENTS.md missing collab guidance")
+	}
+
+	skillPath := filepath.Join(root, ".agents", "skills", "collab", "SKILL.md")
+	skillData, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("stat installed collab skill: %v", err)
+	}
+	if !strings.Contains(string(skillData), "name: collab") || !strings.Contains(string(skillData), "description:") {
+		t.Fatalf("installed skill missing required Agent Skills frontmatter")
+	}
+}
+
 func resetInitGlobalsForTest() {
 	initAgents = ""
+	initTask = store.DefaultTask
 	initForce = false
+	initNoAgentsMD = false
+	initNoInstallSkill = false
 }

@@ -12,6 +12,8 @@ import (
 )
 
 var (
+	sendAgent   string
+	sendTask    string
 	sendTo      string
 	sendType    string
 	sendRe      int
@@ -29,10 +31,6 @@ The sender identity comes from the COLLAB_AGENT environment variable.`,
 	Example: `  echo "Should we use a mutex here?" | collab send --to agent-b --type inquiry --summary "mutex question"
   cat proposal.md | collab send --to agent-a --type proposal --re 3 --summary "alternative design"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		from := os.Getenv("COLLAB_AGENT")
-		if from == "" {
-			return fmt.Errorf("COLLAB_AGENT env var not set — set it to this agent's name")
-		}
 		if sendTo == "" {
 			return fmt.Errorf("--to is required")
 		}
@@ -59,7 +57,13 @@ The sender identity comes from the COLLAB_AGENT environment variable.`,
 		if err != nil {
 			return err
 		}
-		s := store.Find(cwd)
+		s := findStoreForTask(cwd, sendTask)
+
+		from, err := requireKnownAgent(s, sendAgent)
+		if err != nil {
+			return err
+		}
+
 		if err := s.ValidateRecipient(sendTo); err != nil {
 			return err
 		}
@@ -87,6 +91,8 @@ The sender identity comes from the COLLAB_AGENT environment variable.`,
 }
 
 func init() {
+	sendCmd.Flags().StringVar(&sendAgent, "agent", "", "Sending agent identity (required)")
+	sendCmd.Flags().StringVar(&sendTask, "task", store.DefaultTask, "Task namespace for message store")
 	sendCmd.Flags().StringVar(&sendTo, "to", "", "Recipient agent name")
 	sendCmd.Flags().StringVar(&sendType, "type", "inquiry", "Message type (inquiry|reply|proposal|review|info)")
 	sendCmd.Flags().IntVar(&sendRe, "re", 0, "Seq number this is in reply to")
