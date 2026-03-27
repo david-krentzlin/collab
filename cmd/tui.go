@@ -339,7 +339,7 @@ func (m *tuiModel) View() tea.View {
 		threadCell := threadContent
 		threadsRendered := bodyStyleThreads.Render(threadCell)
 
-		detailsRendered := bodyStyleDetails.Render(fitCellContent(detailContent, detailsWidth))
+		detailsRendered := bodyStyleDetails.Render(detailContent)
 		lines = append(lines, "│"+tasksRendered+"│"+threadsRendered+"│"+detailsRendered+"│")
 	}
 
@@ -1298,13 +1298,14 @@ func (m *tuiModel) renderMessageDetails(msg *message.Message) string {
 		viewWidth = 72
 	}
 
+	cardPaddingX := 1
 	cardWidth := max(viewWidth-2, 24)
-	innerWidth := max(cardWidth-2, 1)
+	innerWidth := max(cardWidth-2-(cardPaddingX*2), 1)
 	gapWidth := 2
-	leftWidth := max(innerWidth/2-gapWidth/2, 12)
+	leftWidth := max((innerWidth*2)/5, 12)
 	rightWidth := innerWidth - leftWidth - gapWidth
-	if rightWidth < 10 {
-		rightWidth = max(innerWidth/2, 10)
+	if rightWidth < 12 {
+		rightWidth = max(innerWidth/2, 12)
 		leftWidth = max(innerWidth-rightWidth-gapWidth, 1)
 	}
 
@@ -1316,32 +1317,74 @@ func (m *tuiModel) renderMessageDetails(msg *message.Message) string {
 	titleStyle := lipgloss.NewStyle().Width(innerWidth).Bold(true)
 	dividerStyle := lipgloss.NewStyle().Width(innerWidth)
 	metaCellStyle := lipgloss.NewStyle()
-	gapStyle := lipgloss.NewStyle().Width(gapWidth)
+	metaLabelStyle := lipgloss.NewStyle()
+	metaMutedStyle := lipgloss.NewStyle()
+	typeValueStyle := lipgloss.NewStyle()
+	timeValueStyle := lipgloss.NewStyle()
+	metaRowStyle := lipgloss.NewStyle().Width(innerWidth)
+	gapStyle := lipgloss.NewStyle().Width(gapWidth).Render(strings.Repeat(" ", gapWidth))
 	summaryStyle := lipgloss.NewStyle().Width(innerWidth)
 	bodyHeaderStyle := lipgloss.NewStyle().Width(innerWidth).Bold(true)
 	bodyStyle := lipgloss.NewStyle().Width(innerWidth).BorderStyle(lipgloss.NormalBorder()).Padding(0, 1)
-	cardStyle := lipgloss.NewStyle().Width(cardWidth).BorderStyle(lipgloss.NormalBorder())
+	cardStyle := lipgloss.NewStyle().Width(cardWidth).BorderStyle(lipgloss.NormalBorder()).Padding(0, cardPaddingX)
+	statusBadgeStyle := lipgloss.NewStyle().Bold(true).Padding(0, 1)
+	metaRowBG := lipgloss.Color("")
 
 	if m.colorEnabled {
-		titleStyle = titleStyle.Foreground(lipgloss.Color("#E8EDF7"))
+		titleStyle = titleStyle.Foreground(lipgloss.Color("#E8EDF7")).Background(lipgloss.Color("#111A2B")).ColorWhitespace(true)
 		dividerStyle = dividerStyle.Foreground(lipgloss.Color("#3A4660"))
-		metaCellStyle = metaCellStyle.Foreground(lipgloss.Color("#C8D0DC"))
+		metaRowBG = lipgloss.Color("#111A2B")
+		metaCellStyle = metaCellStyle.Foreground(lipgloss.Color("#C8D0DC")).Background(metaRowBG).ColorWhitespace(true)
+		metaLabelStyle = metaLabelStyle.Foreground(lipgloss.Color("#A7B5CB")).Background(metaRowBG).ColorWhitespace(true)
+		metaMutedStyle = metaMutedStyle.Foreground(lipgloss.Color("#A3B3C9")).Background(metaRowBG).ColorWhitespace(true)
+		typeValueStyle = typeValueStyle.Foreground(lipgloss.Color("#9BC6FF")).Bold(true).Background(metaRowBG).ColorWhitespace(true)
+		timeValueStyle = timeValueStyle.Foreground(lipgloss.Color("#C8D0DC")).Background(metaRowBG).ColorWhitespace(true)
+		metaRowStyle = metaRowStyle.Background(metaRowBG).ColorWhitespace(true)
+		gapStyle = lipgloss.NewStyle().Width(gapWidth).Background(metaRowBG).ColorWhitespace(true).Render(strings.Repeat(" ", gapWidth))
 		summaryStyle = summaryStyle.Foreground(lipgloss.Color("#DCE5F3")).Background(lipgloss.Color("#1E2634")).ColorWhitespace(true)
-		bodyHeaderStyle = bodyHeaderStyle.Foreground(lipgloss.Color("#D8E0EC"))
+		bodyHeaderStyle = bodyHeaderStyle.Foreground(lipgloss.Color("#D8E0EC")).Background(lipgloss.Color("#111A2B")).ColorWhitespace(true)
 		bodyStyle = bodyStyle.Foreground(lipgloss.Color("#D3DBE7")).Background(lipgloss.Color("#141B2A")).BorderForeground(lipgloss.Color("#3A4660")).ColorWhitespace(true)
 		cardStyle = cardStyle.Foreground(lipgloss.Color("#CED8E7")).Background(lipgloss.Color("#0E1320")).BorderForeground(lipgloss.Color("#3A4660")).ColorWhitespace(true)
+		statusBadgeStyle = statusBadgeStyle.Foreground(lipgloss.Color("#EAF2FF")).Background(metaRowBG)
+		switch msg.Status {
+		case message.Resolved:
+			statusBadgeStyle = statusBadgeStyle.Foreground(lipgloss.Color("#84DF9E"))
+		default:
+			statusBadgeStyle = statusBadgeStyle.Foreground(lipgloss.Color("#F4D06F"))
+		}
 	}
 
-	leftTop := "From: " + msg.From
-	rightTop := "Type: " + string(msg.Type) + "   Re: " + reLabel
-	leftBottom := "To: " + msg.To
-	rightBottom := "Status: " + detailsStatusLabel(msg.Status) + "   Time: " + detailsTimeLabel(msg.TS)
-
+	metaKV := func(label string, value string, valueStyle lipgloss.Style, width int) string {
+		if width <= 0 {
+			return ""
+		}
+		labelText := label + ": "
+		labelWidth := lipgloss.Width(labelText)
+		if labelWidth >= width {
+			return metaLabelStyle.Copy().Width(width).Render(fitCellContent(labelText, width))
+		}
+		valueWidth := width - labelWidth
+		labelCell := metaLabelStyle.Copy().Width(labelWidth).Render(labelText)
+		valueCell := valueStyle.Copy().Width(valueWidth).Render(fitCellContent(value, valueWidth))
+		return lipgloss.JoinHorizontal(lipgloss.Top, labelCell, valueCell)
+	}
 	metaRow := func(left, right string) string {
-		leftCell := metaCellStyle.Copy().Width(leftWidth).Render(fitCellContent(left, leftWidth))
-		rightCell := metaCellStyle.Copy().Width(rightWidth).Render(fitCellContent(right, rightWidth))
-		return lipgloss.JoinHorizontal(lipgloss.Top, leftCell, gapStyle.Render("  "), rightCell)
+		joined := lipgloss.JoinHorizontal(lipgloss.Top, left, gapStyle, right)
+		return metaRowStyle.Render(joined)
 	}
+
+	agentFromStyle := metaCellStyle.Copy()
+	agentToStyle := metaCellStyle.Copy()
+	if m.colorEnabled {
+		agentFromStyle = agentFromStyle.Foreground(lipgloss.Color(m.agentColor(msg.From))).Bold(true)
+		agentToStyle = agentToStyle.Foreground(lipgloss.Color(m.agentColor(msg.To))).Bold(true)
+	}
+
+	leftTop := metaKV("From", msg.From, agentFromStyle, leftWidth)
+	leftBottom := metaKV("To", msg.To, agentToStyle, leftWidth)
+	rightTop := renderDetailsTypeReRow(rightWidth, string(msg.Type), reLabel, metaRowStyle, metaCellStyle, metaLabelStyle, typeValueStyle)
+	statusBadge := statusBadgeStyle.Render(statusIcon(msg.Status) + " " + detailsStatusLabel(msg.Status))
+	rightBottom := renderDetailsStatusTimeRow(rightWidth, statusBadge, detailsTimeLabel(msg.TS), metaRowStyle, metaCellStyle, metaLabelStyle, metaMutedStyle, timeValueStyle)
 
 	summaryLine := summaryStyle.Render(reflowText("Summary: "+msg.Summary, innerWidth))
 
@@ -1350,7 +1393,7 @@ func (m *tuiModel) renderMessageDetails(msg *message.Message) string {
 		bodyText = "(empty body)"
 	}
 	bodyTextWidth := max(innerWidth-4, 1)
-	bodyBlock := bodyStyle.Render(reflowText(bodyText, bodyTextWidth))
+	bodyBlock := bodyStyle.Render(renderDetailsBody(bodyText, bodyTextWidth, m.colorEnabled))
 
 	details := lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -1407,6 +1450,143 @@ func reflowText(text string, width int) string {
 	}
 
 	return strings.Join(wrapped, "\n")
+}
+
+func fitStyledContent(content string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	clean := strings.ReplaceAll(content, "\n", " ")
+	if lipgloss.Width(clean) > width {
+		if width == 1 {
+			return "…"
+		}
+		clean = ansi.Truncate(clean, width, "…")
+	}
+
+	padding := width - lipgloss.Width(clean)
+	if padding > 0 {
+		clean += strings.Repeat(" ", padding)
+	}
+
+	return clean
+}
+
+func renderDetailsStatusTimeRow(width int, statusBadge, timeLabel string, metaRowStyle, metaCellStyle, metaLabelStyle, metaMutedStyle, timeValueStyle lipgloss.Style) string {
+	if width <= 0 {
+		return ""
+	}
+	if width < 24 {
+		statusText := "Status: " + detailsStatusLabelFromBadge(statusBadge)
+		timeText := "Time: " + timeLabel
+		return metaRowStyle.Copy().Width(width).Render(fitCellContent(statusText+"  "+timeText, width))
+	}
+
+	timeLabelText := "Time: " + timeLabel
+	rightWidth := max(lipgloss.Width(timeLabelText), 22)
+	if rightWidth >= width {
+		statusText := "Status: " + detailsStatusLabelFromBadge(statusBadge)
+		return metaRowStyle.Copy().Width(width).Render(fitCellContent(statusText+"  "+timeLabelText, width))
+	}
+
+	leftWidth := width - rightWidth
+	leftLabel := metaLabelStyle.Copy().Render("Status: ")
+	leftCell := metaRowStyle.Copy().Width(leftWidth).Render(lipgloss.JoinHorizontal(lipgloss.Top, leftLabel, statusBadge))
+	rightLabel := metaMutedStyle.Copy().Render("Time: ")
+	rightValue := timeValueStyle.Copy().Render(timeLabel)
+	rightCell := metaRowStyle.Copy().Width(rightWidth).Align(lipgloss.Right).Render(lipgloss.JoinHorizontal(lipgloss.Top, rightLabel, rightValue))
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftCell, rightCell)
+}
+
+func renderDetailsTypeReRow(width int, msgType, reLabel string, metaRowStyle, metaCellStyle, metaLabelStyle, typeValueStyle lipgloss.Style) string {
+	if width <= 0 {
+		return ""
+	}
+	if width < 16 {
+		return metaRowStyle.Copy().Width(width).Render(fitCellContent("Type: "+msgType+"  Re: "+reLabel, width))
+	}
+
+	rightText := "Re: " + reLabel
+	rightWidth := max(lipgloss.Width(rightText), 8)
+	if rightWidth >= width {
+		return metaRowStyle.Copy().Width(width).Render(fitCellContent("Type: "+msgType+"  "+rightText, width))
+	}
+
+	leftWidth := width - rightWidth
+	leftLabel := metaLabelStyle.Copy().Render("Type: ")
+	leftValueWidth := max(leftWidth-lipgloss.Width("Type: "), 1)
+	leftValue := typeValueStyle.Copy().Width(leftValueWidth).Render(fitCellContent(msgType, leftValueWidth))
+	leftCell := metaRowStyle.Copy().Width(leftWidth).Render(lipgloss.JoinHorizontal(lipgloss.Top, leftLabel, leftValue))
+	rightLabel := metaLabelStyle.Copy().Render("Re: ")
+	rightValueWidth := max(rightWidth-lipgloss.Width("Re: "), 1)
+	rightValue := metaCellStyle.Copy().Width(rightValueWidth).Render(fitCellContent(reLabel, rightValueWidth))
+	rightCell := metaRowStyle.Copy().Width(rightWidth).Render(lipgloss.JoinHorizontal(lipgloss.Top, rightLabel, rightValue))
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftCell, rightCell)
+}
+
+func detailsStatusLabelFromBadge(statusBadge string) string {
+	trimmed := strings.TrimSpace(ansi.Strip(statusBadge))
+	if strings.Contains(trimmed, " ") {
+		parts := strings.Fields(trimmed)
+		return parts[len(parts)-1]
+	}
+	return trimmed
+}
+
+func renderDetailsBody(bodyText string, width int, colorEnabled bool) string {
+	if strings.TrimSpace(bodyText) == "" {
+		return "(empty body)"
+	}
+
+	normalized := strings.ReplaceAll(bodyText, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	plainLineStyle := lipgloss.NewStyle().Width(width).MaxWidth(width)
+	codeLineStyle := plainLineStyle.Copy().PaddingLeft(1)
+	codeRuleStyle := lipgloss.NewStyle().Width(1).MaxWidth(1)
+	if colorEnabled {
+		plainLineStyle = plainLineStyle.Foreground(lipgloss.Color("#D3DBE7")).Background(lipgloss.Color("#141B2A")).ColorWhitespace(true)
+		codeRuleStyle = codeRuleStyle.Foreground(lipgloss.Color("#5D7090")).Background(lipgloss.Color("#1A2438")).ColorWhitespace(true)
+		codeLineStyle = codeLineStyle.Foreground(lipgloss.Color("#D7E7FF")).Background(lipgloss.Color("#1A2438")).ColorWhitespace(true)
+	}
+
+	rendered := make([]string, 0, len(lines)+4)
+	inFence := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+			continue
+		}
+
+		if trimmed == "" {
+			rendered = append(rendered, "")
+			continue
+		}
+
+		isCodeLike := inFence || strings.HasPrefix(line, "\t") || strings.HasPrefix(line, "    ")
+		if isCodeLike {
+			wrapped := strings.Split(ansi.Hardwrap(line, width, true), "\n")
+			for _, chunk := range wrapped {
+				lineWidth := max(width-1, 1)
+				rule := codeRuleStyle.Render("│")
+				content := codeLineStyle.Copy().Width(lineWidth).MaxWidth(lineWidth).Render(fitCellContent(strings.TrimLeft(chunk, "\t"), max(lineWidth-1, 1)))
+				rendered = append(rendered, lipgloss.JoinHorizontal(lipgloss.Top, rule, content))
+			}
+			continue
+		}
+
+		wrapped := strings.Split(ansi.Wordwrap(line, width, " "), "\n")
+		for _, chunk := range wrapped {
+			rendered = append(rendered, plainLineStyle.Render(fitCellContent(chunk, width)))
+		}
+	}
+
+	if len(rendered) == 0 {
+		return "(empty body)"
+	}
+
+	return strings.Join(rendered, "\n")
 }
 
 func (m *tuiModel) moveConversationSelection(delta int) {

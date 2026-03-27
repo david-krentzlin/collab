@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/david-krentzlin/collab/internal/message"
 	"github.com/david-krentzlin/collab/internal/store"
 )
@@ -136,6 +137,86 @@ func TestTUIModelDetailsPaneReflowsSummaryAndBody(t *testing.T) {
 	}
 	if !strings.Contains(details, "DETAIL_BODY_WRAP_TAIL") {
 		t.Fatalf("expected wrapped body tail to remain visible, got: %q", details)
+	}
+}
+
+func TestTUIModelDetailsPaneShowsStatusBadgeIcon(t *testing.T) {
+	root := t.TempDir()
+	s := initTaskStore(t, root, "details-status-badge")
+	if _, err := s.CreateMessage(&message.Message{
+		From:    "bob",
+		To:      "alice",
+		Type:    message.Review,
+		TS:      message.Now(),
+		Summary: "status badge",
+		Status:  message.Resolved,
+		Body:    "body",
+	}); err != nil {
+		t.Fatalf("create resolved message: %v", err)
+	}
+
+	m := newTUIModelForBase(filepath.Join(root, store.CollabDir))
+	if err := m.refreshTasksFromDisk(); err != nil {
+		t.Fatalf("refresh tasks: %v", err)
+	}
+	m.selectedTaskIdx = findTaskIndex(t, m, "details-status-badge")
+	m.setSize(100, 14)
+	if err := m.refreshSelectedConversation(); err != nil {
+		t.Fatalf("refresh selected conversation: %v", err)
+	}
+
+	details := m.detailsViewport.GetContent()
+	if !strings.Contains(details, iconResolved) {
+		t.Fatalf("expected resolved status badge icon in details pane, got: %q", details)
+	}
+}
+
+func TestTUIModelDetailsPaneRendersFencedCodeWithoutFenceMarkers(t *testing.T) {
+	root := t.TempDir()
+	s := initTaskStore(t, root, "details-code-fence")
+	body := "Validation:\n```sh\ngo test ./cmd -run TUIModel\ngo test ./...\n```\nDone."
+	if _, err := s.CreateMessage(&message.Message{
+		From:    "bob",
+		To:      "alice",
+		Type:    message.Review,
+		TS:      message.Now(),
+		Summary: "fenced code",
+		Status:  message.Open,
+		Body:    body,
+	}); err != nil {
+		t.Fatalf("create fenced code message: %v", err)
+	}
+
+	m := newTUIModelForBase(filepath.Join(root, store.CollabDir))
+	if err := m.refreshTasksFromDisk(); err != nil {
+		t.Fatalf("refresh tasks: %v", err)
+	}
+	m.selectedTaskIdx = findTaskIndex(t, m, "details-code-fence")
+	m.setSize(100, 14)
+	if err := m.refreshSelectedConversation(); err != nil {
+		t.Fatalf("refresh selected conversation: %v", err)
+	}
+
+	details := m.detailsViewport.GetContent()
+	if strings.Contains(details, "```") {
+		t.Fatalf("expected fence markers to be hidden in details pane, got: %q", details)
+	}
+	if !strings.Contains(details, "go test ./cmd -run") {
+		t.Fatalf("expected fenced code content to remain visible, got: %q", details)
+	}
+}
+
+func TestRenderDetailsTypeReRowAlignsReColumn(t *testing.T) {
+	rowReview := renderDetailsTypeReRow(36, "review", "#26", lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle())
+	rowProposal := renderDetailsTypeReRow(36, "proposal", "-", lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle())
+
+	idxReview := strings.Index(rowReview, "Re:")
+	idxProposal := strings.Index(rowProposal, "Re:")
+	if idxReview < 0 || idxProposal < 0 {
+		t.Fatalf("expected Re label in both rows, got review=%q proposal=%q", rowReview, rowProposal)
+	}
+	if idxReview != idxProposal {
+		t.Fatalf("expected Re column aligned, got review idx=%d proposal idx=%d", idxReview, idxProposal)
 	}
 }
 
