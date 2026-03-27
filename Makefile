@@ -2,8 +2,9 @@
 
 GO ?= go
 PKGS ?= ./...
+BIN_DIR ?= $(HOME)/.local/bin
 
-.PHONY: help fmt test test-race build vet bench quality-gate quality-gate-strict qa ci
+.PHONY: help fmt test test-race build install vet bench quality-gate quality-gate-strict qa ci
 
 help:
 	@printf "Targets:\n"
@@ -11,6 +12,7 @@ help:
 	@printf "  make test          - Run unit tests\n"
 	@printf "  make test-race     - Run tests with race detector\n"
 	@printf "  make build         - Build all packages\n"
+	@printf "  make install       - Install collab binary to $(BIN_DIR)\n"
 	@printf "  make vet           - Run go vet\n"
 	@printf "  make bench         - Run benchmarks (single pass)\n"
 	@printf "  make quality-gate  - Run standard local quality checks\n"
@@ -27,6 +29,10 @@ test-race:
 
 build:
 	$(GO) build $(PKGS)
+
+install:
+	mkdir -p "$(BIN_DIR)"
+	GOBIN="$(BIN_DIR)" $(GO) install .
 
 vet:
 	$(GO) vet $(PKGS)
