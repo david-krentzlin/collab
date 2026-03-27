@@ -4,3 +4,4 @@
 * automatically derive the agent name? (have a handshake?)
 * add a way to make collab poll blocking, so an agent can wait (with timeout) for an answer?
 * update view / log to list the tasks first so we see what we can check?
+* add follow mode for web view. so that I can see tasks and the ongoing communication with auto update?

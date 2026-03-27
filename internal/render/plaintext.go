@@ -91,15 +91,15 @@ func renderThread(w io.Writer, t *Thread, colorMap map[string]string, opts Plain
 	fmt.Fprintln(w)
 
 	// Render tree
-	renderNode(w, t.Root, "", true, colorMap, opts)
+	renderNode(w, t.Root, "", true, true, colorMap, opts)
 }
 
-func renderNode(w io.Writer, n *Node, prefix string, isLast bool, colorMap map[string]string, opts PlainOptions) {
+func renderNode(w io.Writer, n *Node, prefix string, isLast bool, isRoot bool, colorMap map[string]string, opts PlainOptions) {
 	m := n.Message
 
 	// Build connector
 	connector := "  "
-	if prefix != "" {
+	if !isRoot {
 		if isLast {
 			connector = "└─ "
 		} else {
@@ -130,7 +130,10 @@ func renderNode(w io.Writer, n *Node, prefix string, isLast bool, colorMap map[s
 	// Body (unless compact mode)
 	if !opts.Compact && m.Body != "" {
 		bodyPrefix := prefix
-		if prefix != "" {
+		switch {
+		case isRoot:
+			bodyPrefix = "  "
+		case prefix != "":
 			if isLast {
 				bodyPrefix = prefix + "   "
 			} else {
@@ -157,7 +160,9 @@ func renderNode(w io.Writer, n *Node, prefix string, isLast bool, colorMap map[s
 
 	// Render children
 	childPrefix := prefix
-	if prefix != "" {
+	if isRoot {
+		childPrefix = "  "
+	} else if prefix != "" {
 		if isLast {
 			childPrefix = prefix + "   "
 		} else {
@@ -166,7 +171,7 @@ func renderNode(w io.Writer, n *Node, prefix string, isLast bool, colorMap map[s
 	}
 	for i, child := range n.Children {
 		isChildLast := i == len(n.Children)-1
-		renderNode(w, child, childPrefix, isChildLast, colorMap, opts)
+		renderNode(w, child, childPrefix, isChildLast, false, colorMap, opts)
 	}
 }
 
