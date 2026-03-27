@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"syscall"
 
 	"github.com/david-krentzlin/collab/internal/message"
@@ -135,10 +134,6 @@ func (s *Store) readIndexRecords() ([]indexRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	sort.Slice(records, func(i, j int) bool {
-		return records[i].Seq < records[j].Seq
-	})
 	return records, nil
 }
 
