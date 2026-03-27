@@ -153,6 +153,23 @@ func TestInitWritesAgentsAndSkillByDefault(t *testing.T) {
 	}
 }
 
+func TestInitSkipsAgentsMDWhenDisabled(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	resetInitGlobalsForTest()
+	initAgents = "agent-a,agent-b"
+	initNoAgentsMD = true
+
+	if err := initCmd.RunE(initCmd, nil); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("AGENTS.md should not be created when --no-agents-md is set")
+	}
+}
+
 func resetInitGlobalsForTest() {
 	initAgents = ""
 	initTask = store.DefaultTask
