@@ -30,7 +30,7 @@ every interaction, wasting tokens and context window.
 
 ### Directory Structure
 
-Current (task-scoped; `COLLAB_TASK` defaults to `default`):
+Current (task-scoped; `--task` defaults to `default`):
 
 ```
 .collab/
@@ -159,7 +159,7 @@ relevant to the agent's current work.
 **Purpose:** Send a message to another agent. Body is read from stdin.
 
 **How it works:**
-1. Reads `COLLAB_AGENT` env var for sender identity.
+1. Reads `--agent` flag for sender identity.
 2. Increments the global sequence counter.
 3. Reads body from stdin.
 4. Writes a markdown file with frontmatter into the sender's directory.
@@ -325,18 +325,15 @@ number of tasks grows.
 
 ### Environment Setup
 
-Each agent session sets `COLLAB_AGENT` to its identity:
+Each agent session must pin explicit identity and task in tool definitions
+using `--agent` and `--task` flags.
 
 ```bash
-# Terminal 1
-export COLLAB_AGENT=agent-a
-export COLLAB_TASK=auth-middleware   # optional; defaults to "default"
-opencode
+# Terminal 1 tool calls
+collab check --agent agent-a --task auth-middleware --since 0
 
-# Terminal 2
-export COLLAB_AGENT=agent-b
-export COLLAB_TASK=auth-middleware
-opencode
+# Terminal 2 tool calls
+collab check --agent agent-b --task auth-middleware --since 0
 ```
 
 ### Tool Definitions

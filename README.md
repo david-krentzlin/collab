@@ -6,7 +6,7 @@ A filesystem-based communication protocol for AI agents working on the same code
 
 ```
 .collab/
-  default/                # task/feature namespace (from COLLAB_TASK)
+  default/                # task/feature namespace (selected via --task)
     .seq                  # per-task global sequence counter
     .seq.lock             # file lock for sequence allocation
     .index.jsonl          # append-only metadata index (seq->path, summary, status)

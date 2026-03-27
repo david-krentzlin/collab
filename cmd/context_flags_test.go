@@ -32,10 +32,9 @@ func TestSendRequiresAgentFlag(t *testing.T) {
 	})
 }
 
-func TestSendUsesAgentFlagWithoutEnvVar(t *testing.T) {
+func TestSendUsesAgentFlag(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	t.Setenv("COLLAB_AGENT", "")
 
 	s := store.Find(root)
 	if err := s.Init([]string{"agent-a", "agent-b"}); err != nil {

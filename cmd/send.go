@@ -27,7 +27,7 @@ var sendCmd = &cobra.Command{
 and writes the message as a markdown file with frontmatter into the
 sender's directory under .collab/.
 
-The sender identity comes from the COLLAB_AGENT environment variable.`,
+The sender identity is provided via --agent.`,
 	Example: `  echo "Should we use a mutex here?" | collab send --to agent-b --type inquiry --summary "mutex question"
   cat proposal.md | collab send --to agent-a --type proposal --re 3 --summary "alternative design"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
