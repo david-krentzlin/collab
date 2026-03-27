@@ -112,6 +112,12 @@ collab resolve 1 --agent agent-a --task auth-middleware
 
 # Validate setup for one agent/task context
 collab doctor --agent agent-a --task auth-middleware
+
+# Human log view for a specific task
+collab log --task auth-middleware
+
+# Follow conversation updates (tail-like refresh)
+collab log --task auth-middleware --follow --interval 2s
 ```
 
 ## Token Efficiency Design
@@ -121,4 +127,3 @@ collab doctor --agent agent-a --task auth-middleware
 3. **`summary`** field is mandatory — agents write it for each other
 4. `check` and `read` use the metadata index to avoid directory rescans
 5. Messages live in per-agent directories — no shared mutable state
-
