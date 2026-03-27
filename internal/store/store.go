@@ -204,22 +204,11 @@ func (s *Store) ensureSeqFile() error {
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("stat seq file: %w", err)
 	}
-
-	maxSeq := 0
-	records, err := s.scanMessages()
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-	} else {
-		for _, record := range records {
-			if record.Message.Seq > maxSeq {
-				maxSeq = record.Message.Seq
-			}
-		}
+	if err := os.MkdirAll(s.Root, 0o755); err != nil {
+		return fmt.Errorf("create collab task dir: %w", err)
 	}
 
-	if err := writeSeq(seqPath, maxSeq); err != nil {
+	if err := writeSeq(seqPath, 0); err != nil {
 		return err
 	}
 

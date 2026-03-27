@@ -67,6 +67,41 @@ func TestInitCreatesAgentsUnderTaskRoot(t *testing.T) {
 	}
 }
 
+func TestEnsureSeqFileDoesNotBootstrapFromMessages(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{Root: filepath.Join(t.TempDir(), CollabDir, DefaultTask), Task: DefaultTask}
+	if err := os.MkdirAll(filepath.Join(s.Root, "agent-a"), 0o755); err != nil {
+		t.Fatalf("mkdir agent dir: %v", err)
+	}
+
+	legacyLike := &message.Message{
+		Seq:     42,
+		From:    "agent-a",
+		To:      "agent-b",
+		Type:    message.Info,
+		TS:      message.Now(),
+		Summary: "existing",
+		Status:  message.Open,
+		Body:    "body",
+	}
+	if err := os.WriteFile(filepath.Join(s.Root, "agent-a", "042-info.md"), legacyLike.Marshal(), 0o644); err != nil {
+		t.Fatalf("write message file: %v", err)
+	}
+
+	if err := s.ensureSeqFile(); err != nil {
+		t.Fatalf("ensure seq file: %v", err)
+	}
+
+	seq, err := readSeq(filepath.Join(s.Root, SeqFile))
+	if err != nil {
+		t.Fatalf("read seq: %v", err)
+	}
+	if seq != 0 {
+		t.Fatalf("seq bootstrap = %d, want 0", seq)
+	}
+}
+
 func TestCreateMessageAllocatesUniqueSeqsConcurrently(t *testing.T) {
 	t.Parallel()
 
