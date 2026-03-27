@@ -72,7 +72,7 @@ func buildExport(s *store.Store) (*render.TaskExport, error) {
 	// Read full messages
 	msgs := make([]*message.Message, 0, len(entries))
 	for _, e := range entries {
-		msg, err := s.ReadMessage(e.Seq)
+		msg, err := s.ReadMessageAtPath(e.Path)
 		if err != nil {
 			continue
 		}

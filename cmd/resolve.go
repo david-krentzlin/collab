@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/david-krentzlin/collab/internal/message"
 	"github.com/david-krentzlin/collab/internal/store"
@@ -41,23 +41,45 @@ var resolveCmd = &cobra.Command{
 		msg.Status = message.Resolved
 		data := msg.Marshal()
 
-		// Find and overwrite the file
-		entries, err := s.List(0, "")
+		entry, err := s.Entry(seq)
 		if err != nil {
 			return err
 		}
-		for _, e := range entries {
-			if e.Seq == seq {
-				if err := os.WriteFile(e.Path, data, 0o644); err != nil {
-					return fmt.Errorf("write: %w", err)
-				}
-				fmt.Printf("#%d marked as resolved\n", seq)
-				return nil
-			}
-		}
 
-		// Fallback: also check the message's own agent dir
-		_ = strings.TrimSpace(msg.From)
-		return fmt.Errorf("could not locate file for #%d", seq)
+		if err := writeAtomic(entry.Path, data, 0o644); err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+		if err := s.SetStatus(seq, message.Resolved); err != nil {
+			return err
+		}
+		fmt.Printf("#%d marked as resolved\n", seq)
+		return nil
 	},
+}
+
+func writeAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".resolve-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temp file: %w", err)
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("rename temp file: %w", err)
+	}
+
+	return nil
 }

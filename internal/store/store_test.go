@@ -281,3 +281,82 @@ func TestListForRecipientAppliesSinceAndExcludesSelf(t *testing.T) {
 		t.Fatalf("entry seq = %d, want 3", entries[0].Seq)
 	}
 }
+
+func TestListForRecipientUsesIndexWhenMessageFileIsCorrupted(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{Root: filepath.Join(t.TempDir(), CollabDir, DefaultTask), Task: DefaultTask}
+	if err := s.Init([]string{"agent-a", "agent-b"}); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+
+	msg := &message.Message{
+		From:    "agent-a",
+		To:      "agent-b",
+		Type:    message.Info,
+		TS:      message.Now(),
+		Summary: "index-entry",
+		Status:  message.Open,
+		Body:    "body",
+	}
+	if _, err := s.CreateMessage(msg); err != nil {
+		t.Fatalf("create message: %v", err)
+	}
+
+	entries, err := s.ListForRecipient(0, "agent-b")
+	if err != nil {
+		t.Fatalf("list for recipient: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entry count before corruption = %d, want 1", len(entries))
+	}
+
+	if err := os.WriteFile(entries[0].Path, []byte("not frontmatter\n"), 0o644); err != nil {
+		t.Fatalf("corrupt message file: %v", err)
+	}
+
+	entries, err = s.ListForRecipient(0, "agent-b")
+	if err != nil {
+		t.Fatalf("list for recipient after corruption: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entry count after corruption = %d, want 1", len(entries))
+	}
+}
+
+func TestSetStatusUpdatesIndexedEntries(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{Root: filepath.Join(t.TempDir(), CollabDir, DefaultTask), Task: DefaultTask}
+	if err := s.Init([]string{"agent-a", "agent-b"}); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+
+	msg := &message.Message{
+		From:    "agent-a",
+		To:      "agent-b",
+		Type:    message.Inquiry,
+		TS:      message.Now(),
+		Summary: "status",
+		Status:  message.Open,
+		Body:    "body",
+	}
+	if _, err := s.CreateMessage(msg); err != nil {
+		t.Fatalf("create message: %v", err)
+	}
+
+	if err := s.SetStatus(msg.Seq, message.Resolved); err != nil {
+		t.Fatalf("set status: %v", err)
+	}
+
+	entries, err := s.ListForRecipient(0, "agent-b")
+	if err != nil {
+		t.Fatalf("list for recipient: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entry count = %d, want 1", len(entries))
+	}
+	if entries[0].Status != message.Resolved {
+		t.Fatalf("entry status = %q, want %q", entries[0].Status, message.Resolved)
+	}
+}

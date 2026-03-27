@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -19,6 +18,8 @@ const (
 	TaskEnv     = "COLLAB_TASK"
 	SeqFile     = ".seq"
 	SeqLock     = ".seq.lock"
+	IndexFile   = ".index.jsonl"
+	IndexLock   = ".index.lock"
 	BroadcastTo = "all"
 	seqRetries  = 64
 )
@@ -79,6 +80,9 @@ func (s *Store) Init(agents []string) error {
 		}
 	}
 	if err := s.ensureSeqFile(); err != nil {
+		return err
+	}
+	if err := s.ensureIndexFile(); err != nil {
 		return err
 	}
 	return nil
@@ -160,12 +164,15 @@ func (s *Store) CreateMessage(msg *message.Message) (string, error) {
 
 // WriteMessage writes a message file into the sender's directory.
 func (s *Store) WriteMessage(msg *message.Message) (string, error) {
-	return s.writeMessageFile(msg)
-}
-
-type scannedMessage struct {
-	Path    string
-	Message *message.Message
+	path, err := s.writeMessageFile(msg)
+	if err != nil {
+		return "", err
+	}
+	if err := s.appendIndexRecord(msg, path); err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
+	return path, nil
 }
 
 func (s *Store) writeMessageFile(msg *message.Message) (string, error) {
@@ -196,6 +203,19 @@ func (s *Store) writeMessageFile(msg *message.Message) (string, error) {
 		return "", fmt.Errorf("rename message temp file: %w", err)
 	}
 	return path, nil
+}
+
+// ReadMessageAtPath reads and parses a message from a known filesystem path.
+func (s *Store) ReadMessageAtPath(path string) (*message.Message, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read message file: %w", err)
+	}
+	msg, err := message.Unmarshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("parse message file: %w", err)
+	}
+	return msg, nil
 }
 
 func (s *Store) ensureSeqFile() error {
@@ -265,50 +285,11 @@ func writeSeq(seqPath string, seq int) error {
 	return nil
 }
 
-func (s *Store) scanMessages() ([]scannedMessage, error) {
-	entries, err := os.ReadDir(s.Root)
-	if err != nil {
-		return nil, fmt.Errorf("read collab dir: %w", err)
-	}
-
-	var records []scannedMessage
-	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		agentDir := filepath.Join(s.Root, e.Name())
-		files, err := os.ReadDir(agentDir)
-		if err != nil {
-			continue
-		}
-		for _, f := range files {
-			if f.IsDir() || !strings.HasSuffix(f.Name(), ".md") {
-				continue
-			}
-			path := filepath.Join(agentDir, f.Name())
-			data, err := os.ReadFile(path)
-			if err != nil {
-				continue
-			}
-			msg, err := message.Unmarshal(data)
-			if err != nil {
-				continue
-			}
-			records = append(records, scannedMessage{Path: path, Message: msg})
-		}
-	}
-
-	sort.Slice(records, func(i, j int) bool {
-		return records[i].Message.Seq < records[j].Message.Seq
-	})
-
-	return records, nil
-}
-
 // MessageEntry is a lightweight index entry returned by List.
 type MessageEntry struct {
 	Seq     int
 	From    string
+	To      string
 	Type    message.Type
 	Re      int
 	Summary string
@@ -320,28 +301,20 @@ type MessageEntry struct {
 // If since > 0, only returns messages with seq > since.
 // If excludeFrom is non-empty, excludes messages from that agent.
 func (s *Store) List(since int, excludeFrom string) ([]MessageEntry, error) {
-	records, err := s.scanMessages()
+	records, err := s.readIndexRecords()
 	if err != nil {
 		return nil, err
 	}
 	var results []MessageEntry
 	for _, record := range records {
-		msg := record.Message
-		if excludeFrom != "" && msg.From == excludeFrom {
+		entry := record.toEntry()
+		if excludeFrom != "" && entry.From == excludeFrom {
 			continue
 		}
-		if since > 0 && msg.Seq <= since {
+		if since > 0 && entry.Seq <= since {
 			continue
 		}
-		results = append(results, MessageEntry{
-			Seq:     msg.Seq,
-			From:    msg.From,
-			Type:    msg.Type,
-			Re:      msg.Re,
-			Summary: msg.Summary,
-			Status:  msg.Status,
-			Path:    record.Path,
-		})
+		results = append(results, entry)
 	}
 	return results, nil
 }
@@ -353,66 +326,43 @@ func (s *Store) ListForRecipient(since int, recipient string) ([]MessageEntry, e
 		return s.List(since, "")
 	}
 
-	records, err := s.scanMessages()
+	records, err := s.readIndexRecords()
 	if err != nil {
 		return nil, err
 	}
 
 	var results []MessageEntry
 	for _, record := range records {
-		msg := record.Message
-		if msg.From == recipient {
+		entry := record.toEntry()
+		if entry.From == recipient {
 			continue
 		}
-		if since > 0 && msg.Seq <= since {
+		if since > 0 && entry.Seq <= since {
 			continue
 		}
-		if msg.To != recipient && !strings.EqualFold(msg.To, BroadcastTo) {
+		if entry.To != recipient && !strings.EqualFold(entry.To, BroadcastTo) {
 			continue
 		}
 
-		results = append(results, MessageEntry{
-			Seq:     msg.Seq,
-			From:    msg.From,
-			Type:    msg.Type,
-			Re:      msg.Re,
-			Summary: msg.Summary,
-			Status:  msg.Status,
-			Path:    record.Path,
-		})
+		results = append(results, entry)
 	}
 
 	return results, nil
 }
 
+// Entry returns indexed metadata for a message sequence.
+func (s *Store) Entry(seq int) (MessageEntry, error) {
+	return s.entry(seq)
+}
+
 // ReadMessage reads and parses a message by seq number.
 func (s *Store) ReadMessage(seq int) (*message.Message, error) {
-	// Search all agent directories
-	entries, err := os.ReadDir(s.Root)
+	entry, err := s.entry(seq)
 	if err != nil {
-		return nil, fmt.Errorf("read collab dir: %w", err)
+		return nil, err
 	}
-	pattern := fmt.Sprintf("%03d-", seq)
-	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		agentDir := filepath.Join(s.Root, e.Name())
-		files, err := os.ReadDir(agentDir)
-		if err != nil {
-			continue
-		}
-		for _, f := range files {
-			if strings.HasPrefix(f.Name(), pattern) {
-				data, err := os.ReadFile(filepath.Join(agentDir, f.Name()))
-				if err != nil {
-					return nil, err
-				}
-				return message.Unmarshal(data)
-			}
-		}
-	}
-	return nil, fmt.Errorf("message #%d not found", seq)
+
+	return s.ReadMessageAtPath(entry.Path)
 }
 
 // Agents returns the list of agent directories.
