@@ -93,6 +93,7 @@ Use collab commands to coordinate with another agent for a shared feature task.
 
 1. Confirm identity and task context with the user before first message.
 2. Poll using 'collab check --agent <id> --task <task>' before starting work.
+   If you are waiting for a reply, use 'collab check --agent <id> --task <task> --since <n> --poll <attempts> --interval <duration>'.
 3. Read only relevant messages with 'collab read <seq> --agent <id> --task <task>'.
 4. Send updates with concise summaries via 'collab send --agent <id> --task <task> ...'.
 5. Use '--re <seq>' when replying to keep threads linked.

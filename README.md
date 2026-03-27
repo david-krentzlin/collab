@@ -100,6 +100,9 @@ collab check --agent agent-b --task auth-middleware
 collab check --agent agent-b --task auth-middleware --since 1
 # output: No new messages since #1
 
+# Wait for replies by polling (tail-like inbox wait)
+collab check --agent agent-b --task auth-middleware --since 1 --poll 10 --interval 2s
+
 # Read full message
 collab read 1 --agent agent-b --task auth-middleware
 

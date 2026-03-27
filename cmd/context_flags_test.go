@@ -64,9 +64,7 @@ func TestCheckRequiresAgentFlag(t *testing.T) {
 		t.Fatalf("init store: %v", err)
 	}
 
-	checkSince = 0
-	checkAgent = ""
-	checkTask = store.DefaultTask
+	resetCheckGlobalsForTest()
 
 	err := checkCmd.RunE(checkCmd, nil)
 	if err == nil {

@@ -151,6 +151,9 @@ func TestInitWritesAgentsAndSkillByDefault(t *testing.T) {
 	if !strings.Contains(string(skillData), "name: collab") || !strings.Contains(string(skillData), "description:") {
 		t.Fatalf("installed skill missing required Agent Skills frontmatter")
 	}
+	if !strings.Contains(string(skillData), "--poll") || !strings.Contains(string(skillData), "--interval") {
+		t.Fatalf("installed skill should document check polling options")
+	}
 }
 
 func TestInitSkipsAgentsMDWhenDisabled(t *testing.T) {
