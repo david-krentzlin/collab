@@ -59,6 +59,30 @@ go build -o collab .
 mv collab /usr/local/bin/
 ```
 
+## Quality Gates
+
+Use the repository `Makefile` to run consistent local checks:
+
+```bash
+# standard QA gate (used for local validation)
+make quality-gate
+
+# or run individual checks
+make test
+make test-race
+make build
+
+# strict gate including formatting + vet
+make quality-gate-strict
+```
+
+Additional helper targets:
+
+- `make fmt`
+- `make vet`
+- `make bench`
+- `make qa` / `make ci` (aliases for `make quality-gate`)
+
 ## Usage
 
 ```bash
