@@ -360,3 +360,69 @@ func TestSetStatusUpdatesIndexedEntries(t *testing.T) {
 		t.Fatalf("entry status = %q, want %q", entries[0].Status, message.Resolved)
 	}
 }
+
+func TestReadMessageRebuildsIndexWhenRecordMissing(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{Root: filepath.Join(t.TempDir(), CollabDir, DefaultTask), Task: DefaultTask}
+	if err := s.Init([]string{"agent-a", "agent-b"}); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+
+	msg := &message.Message{
+		Seq:     1,
+		From:    "agent-a",
+		To:      "agent-b",
+		Type:    message.Info,
+		TS:      message.Now(),
+		Summary: "recover",
+		Status:  message.Open,
+		Body:    "body",
+	}
+	if _, err := s.writeMessageFile(msg); err != nil {
+		t.Fatalf("write message file: %v", err)
+	}
+
+	got, err := s.ReadMessage(1)
+	if err != nil {
+		t.Fatalf("read message: %v", err)
+	}
+	if got.Summary != "recover" {
+		t.Fatalf("summary = %q, want recover", got.Summary)
+	}
+}
+
+func TestListForRecipientRebuildsCorruptIndex(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{Root: filepath.Join(t.TempDir(), CollabDir, DefaultTask), Task: DefaultTask}
+	if err := s.Init([]string{"agent-a", "agent-b"}); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+
+	msg := &message.Message{
+		From:    "agent-a",
+		To:      "agent-b",
+		Type:    message.Info,
+		TS:      message.Now(),
+		Summary: "recover-index",
+		Status:  message.Open,
+		Body:    "body",
+	}
+	if _, err := s.CreateMessage(msg); err != nil {
+		t.Fatalf("create message: %v", err)
+	}
+
+	indexPath := filepath.Join(s.Root, IndexFile)
+	if err := os.WriteFile(indexPath, []byte("not-json\n"), 0o644); err != nil {
+		t.Fatalf("corrupt index: %v", err)
+	}
+
+	entries, err := s.ListForRecipient(0, "agent-b")
+	if err != nil {
+		t.Fatalf("list for recipient: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entry count = %d, want 1", len(entries))
+	}
+}
