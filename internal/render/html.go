@@ -3,6 +3,7 @@ package render
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 )
 
@@ -19,7 +20,7 @@ func HTML(w io.Writer, export *TaskExport) error {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>collab — `)
-	fmt.Fprint(w, export.Task)
+	fmt.Fprint(w, html.EscapeString(export.Task))
 	fmt.Fprint(w, `</title>
 <style>
   :root {
@@ -101,10 +102,11 @@ func HTML(w io.Writer, export *TaskExport) error {
 </style>
 </head>
 <body>
-<script>
-const DATA = `)
+<script type="application/json" id="collab-data">`)
 	fmt.Fprintf(w, "%s", data)
-	fmt.Fprint(w, `;
+	fmt.Fprint(w, `</script>
+<script>
+const DATA = JSON.parse(document.getElementById('collab-data').textContent);
 
 const AGENT_COLORS = ['--agent0','--agent1','--agent2','--agent3','--agent4'];
 const agentColorMap = {};
