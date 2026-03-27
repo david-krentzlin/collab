@@ -1302,7 +1302,7 @@ func (m *tuiModel) renderMessageDetails(msg *message.Message) string {
 	cardWidth := max(viewWidth-2, 24)
 	innerWidth := max(cardWidth-2-(cardPaddingX*2), 1)
 	gapWidth := 2
-	leftWidth := max((innerWidth*2)/5, 12)
+	leftWidth := max((innerWidth*3)/8, 12)
 	rightWidth := innerWidth - leftWidth - gapWidth
 	if rightWidth < 12 {
 		rightWidth = max(innerWidth/2, 12)
@@ -1508,30 +1508,23 @@ func renderDetailsTypeReRow(width int, msgType, reLabel string, metaRowStyle, me
 	}
 
 	rightText := "Re: " + reLabel
-	rightWidth := max(lipgloss.Width(rightText), 8)
-	if rightWidth >= width {
+	rightWidth := max(lipgloss.Width(rightText), 7)
+	if rightWidth+1 >= width {
 		return metaRowStyle.Copy().Width(width).Render(fitCellContent("Type: "+msgType+"  "+rightText, width))
 	}
 
-	leftWidth := width - rightWidth
+	leftWidth := width - rightWidth - 1
 	leftLabel := metaLabelStyle.Copy().Render("Type: ")
 	leftValueWidth := max(leftWidth-lipgloss.Width("Type: "), 1)
 	leftValue := typeValueStyle.Copy().Width(leftValueWidth).Render(fitCellContent(msgType, leftValueWidth))
 	leftCell := metaRowStyle.Copy().Width(leftWidth).Render(lipgloss.JoinHorizontal(lipgloss.Top, leftLabel, leftValue))
-	rightLabel := metaLabelStyle.Copy().Render("Re: ")
-	rightValueWidth := max(rightWidth-lipgloss.Width("Re: "), 1)
-	rightValue := metaCellStyle.Copy().Width(rightValueWidth).Render(fitCellContent(reLabel, rightValueWidth))
-	rightCell := metaRowStyle.Copy().Width(rightWidth).Render(lipgloss.JoinHorizontal(lipgloss.Top, rightLabel, rightValue))
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftCell, rightCell)
+	rightCell := metaRowStyle.Copy().Width(rightWidth).Render(metaCellStyle.Copy().Render(fitCellContent(rightText, rightWidth)))
+	sep := metaRowStyle.Copy().Width(1).Render(" ")
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftCell, sep, rightCell)
 }
 
 func detailsStatusLabelFromBadge(statusBadge string) string {
-	trimmed := strings.TrimSpace(ansi.Strip(statusBadge))
-	if strings.Contains(trimmed, " ") {
-		parts := strings.Fields(trimmed)
-		return parts[len(parts)-1]
-	}
-	return trimmed
+	return strings.TrimSpace(ansi.Strip(statusBadge))
 }
 
 func renderDetailsBody(bodyText string, width int, colorEnabled bool) string {
