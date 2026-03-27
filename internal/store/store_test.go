@@ -10,6 +10,30 @@ import (
 	"github.com/david-krentzlin/collab/internal/message"
 )
 
+func TestFindUsesDefaultTaskSubdirectory(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	s := Find(root)
+
+	want := filepath.Join(root, CollabDir, DefaultTask)
+	if s.Root != want {
+		t.Fatalf("store root = %q, want %q", s.Root, want)
+	}
+}
+
+func TestFindUsesTaskFromEnv(t *testing.T) {
+	t.Setenv(TaskEnv, "feature/cache-race")
+
+	root := t.TempDir()
+	s := Find(root)
+
+	want := filepath.Join(root, CollabDir, "feature/cache-race")
+	if s.Root != want {
+		t.Fatalf("store root = %q, want %q", s.Root, want)
+	}
+}
+
 func TestInitCreatesSequenceFile(t *testing.T) {
 	t.Parallel()
 
@@ -21,6 +45,25 @@ func TestInitCreatesSequenceFile(t *testing.T) {
 	seqPath := filepath.Join(s.Root, ".seq")
 	if _, err := os.Stat(seqPath); err != nil {
 		t.Fatalf("stat sequence file %q: %v", seqPath, err)
+	}
+}
+
+func TestInitCreatesAgentsUnderTaskRoot(t *testing.T) {
+	t.Setenv(TaskEnv, "feature/new-layout")
+
+	base := t.TempDir()
+	s := Find(base)
+	if err := s.Init([]string{"agent-a", "agent-b"}); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(s.Root, "agent-a")); err != nil {
+		t.Fatalf("stat task-scoped agent dir: %v", err)
+	}
+
+	legacyAgentDir := filepath.Join(base, CollabDir, "agent-a")
+	if _, err := os.Stat(legacyAgentDir); !os.IsNotExist(err) {
+		t.Fatalf("legacy agent dir should not exist at %q", legacyAgentDir)
 	}
 }
 

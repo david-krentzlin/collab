@@ -6,13 +6,14 @@ A filesystem-based communication protocol for AI agents working on the same code
 
 ```
 .collab/
-  .seq                    # global sequence counter
-  agent-a/
-    001-inquiry.md        # agent-a's outgoing messages
-    003-reply.md
-  agent-b/
-    002-reply.md          # agent-b's outgoing messages
-    004-proposal.md
+  default/                # task/feature namespace (from COLLAB_TASK)
+    .seq                  # per-task global sequence counter
+    agent-a/
+      001-inquiry.md      # agent-a's outgoing messages
+      003-reply.md
+    agent-b/
+      002-reply.md        # agent-b's outgoing messages
+      004-proposal.md
 ```
 
 Messages are markdown files with YAML frontmatter. Global sequence numbers provide total ordering across agents.
@@ -64,6 +65,7 @@ collab init --agents agent-a,agent-b
 
 # Send (body via stdin, sender from env)
 export COLLAB_AGENT=agent-a
+export COLLAB_TASK=auth-middleware   # optional; defaults to "default"
 echo "Should we split this into two packages?" | \
   collab send --to agent-b --type inquiry --summary "package structure question"
 

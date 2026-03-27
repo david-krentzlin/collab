@@ -30,11 +30,11 @@ var initCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		s := &store.Store{Root: fmt.Sprintf("%s/%s", cwd, store.CollabDir)}
+		s := store.Find(cwd)
 		if err := s.Init(agents); err != nil {
 			return err
 		}
-		fmt.Printf("Initialized .collab/ with agents: %s\n", strings.Join(agents, ", "))
+		fmt.Printf("Initialized .collab/%s/ with agents: %s\n", s.Task, strings.Join(agents, ", "))
 		return nil
 	},
 }

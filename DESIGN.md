@@ -30,19 +30,20 @@ every interaction, wasting tokens and context window.
 
 ### Directory Structure
 
-Current (flat, single task):
+Current (task-scoped; `COLLAB_TASK` defaults to `default`):
 
 ```
 .collab/
-  .seq                        # global sequence counter (integer)
-  agent-a/                    # agent-a's outgoing messages
-    001-inquiry.md
-    003-reply.md
-    005-info.md
-  agent-b/                    # agent-b's outgoing messages
-    002-reply.md
-    004-proposal.md
-    006-review.md
+  default/                    # one directory per task/feature
+    .seq                      # per-task sequence counter (integer)
+    agent-a/                  # agent-a's outgoing messages
+      001-inquiry.md
+      003-reply.md
+      005-info.md
+    agent-b/                  # agent-b's outgoing messages
+      002-reply.md
+      004-proposal.md
+      006-review.md
 ```
 
 Future (multi-task):
@@ -330,10 +331,12 @@ Each agent session sets `COLLAB_AGENT` to its identity:
 ```bash
 # Terminal 1
 export COLLAB_AGENT=agent-a
+export COLLAB_TASK=auth-middleware   # optional; defaults to "default"
 opencode
 
 # Terminal 2
 export COLLAB_AGENT=agent-b
+export COLLAB_TASK=auth-middleware
 opencode
 ```
 

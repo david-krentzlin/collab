@@ -14,24 +14,28 @@ import (
 )
 
 const (
-	CollabDir  = ".collab"
-	SeqFile    = ".seq"
-	SeqLock    = ".seq.lock"
-	seqRetries = 64
+	CollabDir   = ".collab"
+	DefaultTask = "default"
+	TaskEnv     = "COLLAB_TASK"
+	SeqFile     = ".seq"
+	SeqLock     = ".seq.lock"
+	seqRetries  = 64
 )
 
 type Store struct {
-	Root string // absolute path to .collab/
+	Root string // absolute path to .collab/<task>/
+	Task string // task identifier (can include subpaths like feature/foo)
 }
 
 // Find walks up from dir to find an existing .collab directory.
-// If none found, returns the default location (dir/.collab).
+// If none found, returns the default task location (dir/.collab/<task>).
 func Find(dir string) *Store {
 	cur := dir
+	task := resolveTask(os.Getenv(TaskEnv))
 	for {
 		candidate := filepath.Join(cur, CollabDir)
 		if fi, err := os.Stat(candidate); err == nil && fi.IsDir() {
-			return &Store{Root: candidate}
+			return &Store{Root: filepath.Join(candidate, task), Task: task}
 		}
 		parent := filepath.Dir(cur)
 		if parent == cur {
@@ -39,7 +43,27 @@ func Find(dir string) *Store {
 		}
 		cur = parent
 	}
-	return &Store{Root: filepath.Join(dir, CollabDir)}
+	return &Store{Root: filepath.Join(dir, CollabDir, task), Task: task}
+}
+
+func resolveTask(raw string) string {
+	task := strings.TrimSpace(raw)
+	if task == "" {
+		return DefaultTask
+	}
+
+	task = filepath.Clean(task)
+	if task == "." || task == string(filepath.Separator) {
+		return DefaultTask
+	}
+	if filepath.IsAbs(task) {
+		return DefaultTask
+	}
+	if task == ".." || strings.HasPrefix(task, ".."+string(filepath.Separator)) {
+		return DefaultTask
+	}
+
+	return task
 }
 
 // Init creates the .collab directory and agent subdirectories.

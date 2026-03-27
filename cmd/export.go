@@ -81,9 +81,10 @@ func buildExport(s *store.Store) (*render.TaskExport, error) {
 
 	threads, orphans := render.BuildThreads(msgs)
 
-	// Derive task name from .collab parent directory
-	taskName := "default"
-	// TODO: when task directories are implemented, derive from path
+	taskName := s.Task
+	if taskName == "" {
+		taskName = store.DefaultTask
+	}
 
 	return &render.TaskExport{
 		Task:    taskName,

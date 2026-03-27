@@ -2,6 +2,7 @@
 
 These tool definitions are designed to be added to your opencode configuration.
 Each agent session should set `COLLAB_AGENT` to its identity.
+Set `COLLAB_TASK` to scope messages under `.collab/<task>/` (defaults to `default`).
 
 ## Tool: `collab_check`
 
@@ -146,10 +147,12 @@ Guidelines:
 ```bash
 # Terminal 1 — Agent A
 export COLLAB_AGENT=agent-a
+export COLLAB_TASK=auth-middleware
 opencode  # with collab tools configured
 
 # Terminal 2 — Agent B
 export COLLAB_AGENT=agent-b
+export COLLAB_TASK=auth-middleware
 opencode  # with collab tools configured
 
 # Initialize (run once from project root)
