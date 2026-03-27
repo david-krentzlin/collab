@@ -128,6 +128,51 @@ func TestTUIModelManualScrollUpDisablesAutoFollow(t *testing.T) {
 	}
 }
 
+func TestTUIModelBraceScrollUpDisablesAutoFollow(t *testing.T) {
+	root := t.TempDir()
+	seedTaskMessages(t, root, "task-a", 20)
+
+	m := newTUIModelForBase(filepath.Join(root, store.CollabDir))
+	if err := m.refreshTasksFromDisk(); err != nil {
+		t.Fatalf("refresh tasks: %v", err)
+	}
+	m.selectedTaskIdx = findTaskIndex(t, m, "task-a")
+	m.setSize(80, 6)
+	m.autoFollow = true
+	m.focusedPane = focusThreads
+	if err := m.refreshSelectedConversation(); err != nil {
+		t.Fatalf("refresh selected conversation: %v", err)
+	}
+
+	_, _ = m.Update(tea.KeyPressMsg{Code: '{', Text: "{"})
+	if m.autoFollow {
+		t.Fatalf("expected autoFollow=false after '{' manual scroll up")
+	}
+}
+
+func TestTUIModelBraceScrollDownAtBottomReenablesAutoFollow(t *testing.T) {
+	root := t.TempDir()
+	seedTaskMessages(t, root, "task-a", 20)
+
+	m := newTUIModelForBase(filepath.Join(root, store.CollabDir))
+	if err := m.refreshTasksFromDisk(); err != nil {
+		t.Fatalf("refresh tasks: %v", err)
+	}
+	m.selectedTaskIdx = findTaskIndex(t, m, "task-a")
+	m.setSize(80, 6)
+	m.autoFollow = false
+	m.focusedPane = focusThreads
+	if err := m.refreshSelectedConversation(); err != nil {
+		t.Fatalf("refresh selected conversation: %v", err)
+	}
+	m.convoViewport.GotoBottom()
+
+	_, _ = m.Update(tea.KeyPressMsg{Code: '}', Text: "}"})
+	if !m.autoFollow {
+		t.Fatalf("expected autoFollow=true after '}' at bottom")
+	}
+}
+
 func TestTUIModelWhenAutoFollowOffNewContentDoesNotJumpToBottom(t *testing.T) {
 	root := t.TempDir()
 	s := seedTaskMessages(t, root, "task-a", 25)

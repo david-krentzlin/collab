@@ -25,7 +25,7 @@ const (
 	tuiPaneSeparatorWidth = 4
 	tuiRefreshInterval    = time.Second
 	tuiTopbarTitle        = "collab viewer"
-	tuiFooterHints        = "↑/↓ select   Enter collapse   PgUp/PgDn scroll   t mode   q quit"
+	tuiFooterHints        = "q quit   ↑/↓ select   J/K thread   g/G top/btm   {/} scroll   Enter collapse   t mode"
 
 	iconThread    = "󰘬"
 	iconExpand    = ""
@@ -180,7 +180,7 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.detailsViewport.GotoBottom()
 			}
 			return m, nil
-		case "pgup", "b":
+		case "{", "pgup", "b":
 			switch m.focusedPane {
 			case focusDetails:
 				m.detailsViewport.PageUp()
@@ -189,7 +189,7 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.autoFollow = false
 			}
 			return m, nil
-		case "pgdown", "f":
+		case "}", "pgdown", "f":
 			switch m.focusedPane {
 			case focusDetails:
 				m.detailsViewport.PageDown()

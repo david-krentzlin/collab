@@ -59,7 +59,7 @@ func TestTUIModelViewRendersFooterHints(t *testing.T) {
 	if !strings.Contains(footer, "↑/↓ select") {
 		t.Fatalf("footer missing selection hint: %q", footer)
 	}
-	if !strings.Contains(footer, "PgUp/PgDn scroll") {
+	if !strings.Contains(footer, "{/} scroll") {
 		t.Fatalf("footer missing scroll hint: %q", footer)
 	}
 	if !strings.Contains(footer, "q quit") {
