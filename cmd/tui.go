@@ -1327,7 +1327,7 @@ func (m *tuiModel) renderMessageDetails(msg *message.Message) string {
 	bodyHeaderStyle := lipgloss.NewStyle().Width(innerWidth).Bold(true)
 	bodyStyle := lipgloss.NewStyle().Width(innerWidth).BorderStyle(lipgloss.NormalBorder()).Padding(0, 1)
 	cardStyle := lipgloss.NewStyle().Width(cardWidth).BorderStyle(lipgloss.NormalBorder()).Padding(0, cardPaddingX)
-	statusBadgeStyle := lipgloss.NewStyle().Bold(true).Padding(0, 1)
+	statusBadgeStyle := lipgloss.NewStyle().Bold(true)
 	metaRowBG := lipgloss.Color("")
 
 	if m.colorEnabled {
