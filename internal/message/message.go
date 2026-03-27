@@ -1,0 +1,122 @@
+package message
+
+import (
+	"fmt"
+	"strings"
+	"time"
+)
+
+type Type string
+
+const (
+	Inquiry  Type = "inquiry"
+	Reply    Type = "reply"
+	Proposal Type = "proposal"
+	Review   Type = "review"
+	Info     Type = "info"
+)
+
+func ValidType(s string) (Type, error) {
+	switch Type(s) {
+	case Inquiry, Reply, Proposal, Review, Info:
+		return Type(s), nil
+	default:
+		return "", fmt.Errorf("invalid message type %q (valid: inquiry, reply, proposal, review, info)", s)
+	}
+}
+
+type Status string
+
+const (
+	Open     Status = "open"
+	Resolved Status = "resolved"
+)
+
+type Message struct {
+	Seq     int    `yaml:"seq"`
+	From    string `yaml:"from"`
+	To      string `yaml:"to"`
+	Type    Type   `yaml:"type"`
+	Re      int    `yaml:"re,omitempty"`
+	TS      string `yaml:"ts"`
+	Summary string `yaml:"summary"`
+	Status  Status `yaml:"status"`
+	Body    string `yaml:"-"`
+}
+
+// Marshal writes a message as markdown with YAML frontmatter.
+func (m *Message) Marshal() []byte {
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.WriteString(fmt.Sprintf("seq: %d\n", m.Seq))
+	b.WriteString(fmt.Sprintf("from: %s\n", m.From))
+	b.WriteString(fmt.Sprintf("to: %s\n", m.To))
+	b.WriteString(fmt.Sprintf("type: %s\n", m.Type))
+	if m.Re > 0 {
+		b.WriteString(fmt.Sprintf("re: %d\n", m.Re))
+	}
+	b.WriteString(fmt.Sprintf("ts: %q\n", m.TS))
+	b.WriteString(fmt.Sprintf("summary: %q\n", m.Summary))
+	b.WriteString(fmt.Sprintf("status: %s\n", m.Status))
+	b.WriteString("---\n\n")
+	b.WriteString(m.Body)
+	if !strings.HasSuffix(m.Body, "\n") {
+		b.WriteString("\n")
+	}
+	return []byte(b.String())
+}
+
+// Unmarshal parses markdown with YAML frontmatter into a Message.
+// Intentionally hand-rolled to avoid a YAML dependency.
+func Unmarshal(data []byte) (*Message, error) {
+	s := string(data)
+	if !strings.HasPrefix(s, "---\n") {
+		return nil, fmt.Errorf("missing frontmatter delimiter")
+	}
+	rest := s[4:]
+	end := strings.Index(rest, "\n---\n")
+	if end == -1 {
+		return nil, fmt.Errorf("missing closing frontmatter delimiter")
+	}
+	frontmatter := rest[:end]
+	body := strings.TrimPrefix(rest[end+5:], "\n")
+
+	m := &Message{Body: body}
+	for _, line := range strings.Split(frontmatter, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		key, val, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		val = strings.TrimSpace(val)
+		// strip quotes
+		val = strings.Trim(val, `"`)
+		switch key {
+		case "seq":
+			fmt.Sscanf(val, "%d", &m.Seq)
+		case "from":
+			m.From = val
+		case "to":
+			m.To = val
+		case "type":
+			m.Type = Type(val)
+		case "re":
+			fmt.Sscanf(val, "%d", &m.Re)
+		case "ts":
+			m.TS = val
+		case "summary":
+			m.Summary = val
+		case "status":
+			m.Status = Status(val)
+		}
+	}
+	return m, nil
+}
+
+func Now() string {
+	return time.Now().UTC().Format(time.RFC3339)
+}
