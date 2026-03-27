@@ -7,13 +7,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/david-krentzlin/collab/internal/message"
 )
 
 const (
-	CollabDir = ".collab"
-	SeqFile   = ".seq"
+	CollabDir  = ".collab"
+	SeqFile    = ".seq"
+	SeqLock    = ".seq.lock"
+	seqRetries = 64
 )
 
 type Store struct {
@@ -43,87 +47,222 @@ func (s *Store) Init(agents []string) error {
 	if err := os.MkdirAll(s.Root, 0o755); err != nil {
 		return fmt.Errorf("create collab dir: %w", err)
 	}
-	// Initialize sequence counter
-	seqPath := filepath.Join(s.Root, SeqFile)
-	if err := os.WriteFile(seqPath, []byte("0\n"), 0o644); err != nil {
-		return fmt.Errorf("create seq file: %w", err)
-	}
 	for _, agent := range agents {
 		agentDir := filepath.Join(s.Root, agent)
 		if err := os.MkdirAll(agentDir, 0o755); err != nil {
 			return fmt.Errorf("create agent dir %s: %w", agent, err)
 		}
 	}
+	if err := s.ensureSeqFile(); err != nil {
+		return err
+	}
 	return nil
 }
 
-// NextSeq atomically-enough increments and returns the next sequence number.
-// Uses a temp file + rename for pseudo-atomic write.
+// NextSeq allocates the next global sequence number with a process-safe file lock.
 func (s *Store) NextSeq() (int, error) {
+	if err := s.ensureSeqFile(); err != nil {
+		return 0, err
+	}
+
 	seqPath := filepath.Join(s.Root, SeqFile)
-	data, err := os.ReadFile(seqPath)
+	lockPath := filepath.Join(s.Root, SeqLock)
+	for i := 0; i < seqRetries; i++ {
+		snapshot, err := readSeq(seqPath)
+		if err != nil {
+			return 0, err
+		}
+
+		f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
+		if err != nil {
+			return 0, fmt.Errorf("open seq lock file: %w", err)
+		}
+
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+			_ = f.Close()
+			return 0, fmt.Errorf("lock seq file: %w", err)
+		}
+
+		current, err := readSeq(seqPath)
+		if err != nil {
+			_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+			_ = f.Close()
+			return 0, err
+		}
+
+		if current != snapshot {
+			_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+			_ = f.Close()
+			time.Sleep(2 * time.Millisecond)
+			continue
+		}
+
+		next := current + 1
+		if err := writeSeq(seqPath, next); err != nil {
+			_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+			_ = f.Close()
+			return 0, err
+		}
+
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_UN); err != nil {
+			_ = f.Close()
+			return 0, fmt.Errorf("unlock seq file: %w", err)
+		}
+		if err := f.Close(); err != nil {
+			return 0, fmt.Errorf("close seq lock file: %w", err)
+		}
+
+		return next, nil
+	}
+
+	return 0, fmt.Errorf("allocate next seq: optimistic retries exceeded")
+}
+
+// CreateMessage allocates a sequence number and writes the message file.
+func (s *Store) CreateMessage(msg *message.Message) (string, error) {
+	if msg == nil {
+		return "", fmt.Errorf("message is required")
+	}
+
+	seq, err := s.NextSeq()
 	if err != nil {
-		return 0, fmt.Errorf("read seq: %w", err)
+		return "", err
 	}
-	current, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return 0, fmt.Errorf("parse seq: %w", err)
-	}
-	next := current + 1
-	// Write to temp then rename for pseudo-atomicity
-	tmp := seqPath + ".tmp"
-	if err := os.WriteFile(tmp, []byte(fmt.Sprintf("%d\n", next)), 0o644); err != nil {
-		return 0, fmt.Errorf("write seq tmp: %w", err)
-	}
-	if err := os.Rename(tmp, seqPath); err != nil {
-		return 0, fmt.Errorf("rename seq: %w", err)
-	}
-	return next, nil
+	msg.Seq = seq
+
+	return s.WriteMessage(msg)
 }
 
 // WriteMessage writes a message file into the sender's directory.
 func (s *Store) WriteMessage(msg *message.Message) (string, error) {
+	return s.writeMessageFile(msg)
+}
+
+type scannedMessage struct {
+	Path    string
+	Message *message.Message
+}
+
+func (s *Store) writeMessageFile(msg *message.Message) (string, error) {
 	agentDir := filepath.Join(s.Root, msg.From)
 	if err := os.MkdirAll(agentDir, 0o755); err != nil {
 		return "", fmt.Errorf("ensure agent dir: %w", err)
 	}
 	filename := fmt.Sprintf("%03d-%s.md", msg.Seq, msg.Type)
 	path := filepath.Join(agentDir, filename)
-	if err := os.WriteFile(path, msg.Marshal(), 0o644); err != nil {
-		return "", fmt.Errorf("write message: %w", err)
+	tmp, err := os.CreateTemp(agentDir, ".message-*.tmp")
+	if err != nil {
+		return "", fmt.Errorf("create message temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(msg.Marshal()); err != nil {
+		tmp.Close()
+		return "", fmt.Errorf("write message temp file: %w", err)
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return "", fmt.Errorf("chmod message temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return "", fmt.Errorf("close message temp file: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return "", fmt.Errorf("rename message temp file: %w", err)
 	}
 	return path, nil
 }
 
-// MessageEntry is a lightweight index entry returned by List.
-type MessageEntry struct {
-	Seq     int
-	From    string
-	Type    message.Type
-	Re      int
-	Summary string
-	Status  message.Status
-	Path    string
+func (s *Store) ensureSeqFile() error {
+	seqPath := filepath.Join(s.Root, SeqFile)
+	if _, err := os.Stat(seqPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat seq file: %w", err)
+	}
+
+	maxSeq := 0
+	records, err := s.scanMessages()
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+	} else {
+		for _, record := range records {
+			if record.Message.Seq > maxSeq {
+				maxSeq = record.Message.Seq
+			}
+		}
+	}
+
+	if err := writeSeq(seqPath, maxSeq); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-// List returns all messages across all agents, sorted by seq.
-// If since > 0, only returns messages with seq > since.
-// If excludeFrom is non-empty, excludes messages from that agent.
-func (s *Store) List(since int, excludeFrom string) ([]MessageEntry, error) {
+func readSeq(seqPath string) (int, error) {
+	data, err := os.ReadFile(seqPath)
+	if err != nil {
+		return 0, fmt.Errorf("read seq file: %w", err)
+	}
+
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		return 0, nil
+	}
+
+	seq, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, fmt.Errorf("parse seq file: %w", err)
+	}
+	if seq < 0 {
+		return 0, fmt.Errorf("invalid negative seq %d", seq)
+	}
+
+	return seq, nil
+}
+
+func writeSeq(seqPath string, seq int) error {
+	tmp, err := os.CreateTemp(filepath.Dir(seqPath), ".seq-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create seq temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := fmt.Fprintf(tmp, "%d\n", seq); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write seq temp file: %w", err)
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return fmt.Errorf("chmod seq temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close seq temp file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, seqPath); err != nil {
+		return fmt.Errorf("rename seq temp file: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) scanMessages() ([]scannedMessage, error) {
 	entries, err := os.ReadDir(s.Root)
 	if err != nil {
 		return nil, fmt.Errorf("read collab dir: %w", err)
 	}
-	var results []MessageEntry
+
+	var records []scannedMessage
 	for _, e := range entries {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		agentName := e.Name()
-		if excludeFrom != "" && agentName == excludeFrom {
-			continue
-		}
-		agentDir := filepath.Join(s.Root, agentName)
+		agentDir := filepath.Join(s.Root, e.Name())
 		files, err := os.ReadDir(agentDir)
 		if err != nil {
 			continue
@@ -141,23 +280,55 @@ func (s *Store) List(since int, excludeFrom string) ([]MessageEntry, error) {
 			if err != nil {
 				continue
 			}
-			if since > 0 && msg.Seq <= since {
-				continue
-			}
-			results = append(results, MessageEntry{
-				Seq:     msg.Seq,
-				From:    msg.From,
-				Type:    msg.Type,
-				Re:      msg.Re,
-				Summary: msg.Summary,
-				Status:  msg.Status,
-				Path:    path,
-			})
+			records = append(records, scannedMessage{Path: path, Message: msg})
 		}
 	}
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Seq < results[j].Seq
+
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].Message.Seq < records[j].Message.Seq
 	})
+
+	return records, nil
+}
+
+// MessageEntry is a lightweight index entry returned by List.
+type MessageEntry struct {
+	Seq     int
+	From    string
+	Type    message.Type
+	Re      int
+	Summary string
+	Status  message.Status
+	Path    string
+}
+
+// List returns all messages across all agents, sorted by seq.
+// If since > 0, only returns messages with seq > since.
+// If excludeFrom is non-empty, excludes messages from that agent.
+func (s *Store) List(since int, excludeFrom string) ([]MessageEntry, error) {
+	records, err := s.scanMessages()
+	if err != nil {
+		return nil, err
+	}
+	var results []MessageEntry
+	for _, record := range records {
+		msg := record.Message
+		if excludeFrom != "" && msg.From == excludeFrom {
+			continue
+		}
+		if since > 0 && msg.Seq <= since {
+			continue
+		}
+		results = append(results, MessageEntry{
+			Seq:     msg.Seq,
+			From:    msg.From,
+			Type:    msg.Type,
+			Re:      msg.Re,
+			Summary: msg.Summary,
+			Status:  msg.Status,
+			Path:    record.Path,
+		})
+	}
 	return results, nil
 }
 

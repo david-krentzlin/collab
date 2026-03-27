@@ -61,13 +61,7 @@ The sender identity comes from the COLLAB_AGENT environment variable.`,
 		}
 		s := store.Find(cwd)
 
-		seq, err := s.NextSeq()
-		if err != nil {
-			return fmt.Errorf("get next seq: %w", err)
-		}
-
 		msg := &message.Message{
-			Seq:     seq,
 			From:    from,
 			To:      sendTo,
 			Type:    msgType,
@@ -78,12 +72,12 @@ The sender identity comes from the COLLAB_AGENT environment variable.`,
 			Body:    bodyStr,
 		}
 
-		path, err := s.WriteMessage(msg)
+		path, err := s.CreateMessage(msg)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("#%d [%s] -> %s: %s\n", seq, msgType, sendTo, sendSummary)
+		fmt.Printf("#%d [%s] -> %s: %s\n", msg.Seq, msgType, sendTo, sendSummary)
 		fmt.Printf("wrote: %s\n", path)
 		return nil
 	},
