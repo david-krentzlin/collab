@@ -11,6 +11,7 @@ import (
 )
 
 var initAgents string
+var initForce bool
 
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -32,6 +33,20 @@ var initCmd = &cobra.Command{
 			return err
 		}
 		s := store.Find(cwd)
+
+		exists, err := pathExists(s.Root)
+		if err != nil {
+			return err
+		}
+		if exists {
+			if !initForce {
+				return fmt.Errorf("task %q is already initialized at %s (use --force to reset)", s.Task, s.Root)
+			}
+			if err := os.RemoveAll(s.Root); err != nil {
+				return fmt.Errorf("reset existing task %q: %w", s.Task, err)
+			}
+		}
+
 		if err := s.Init(agents); err != nil {
 			return err
 		}
@@ -56,6 +71,18 @@ func parseAndValidateAgents(raw string) ([]string, error) {
 	return agents, nil
 }
 
+func pathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 func init() {
 	initCmd.Flags().StringVar(&initAgents, "agents", "", "Comma-separated list of agent names")
+	initCmd.Flags().BoolVar(&initForce, "force", false, "Reset an existing task directory before initialization")
 }

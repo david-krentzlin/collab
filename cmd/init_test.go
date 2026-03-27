@@ -1,8 +1,13 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/david-krentzlin/collab/internal/message"
+	"github.com/david-krentzlin/collab/internal/store"
 )
 
 func TestInitRejectsEmptyAgentNames(t *testing.T) {
@@ -37,6 +42,88 @@ func TestInitRejectsDuplicateAgentNames(t *testing.T) {
 	}
 }
 
+func TestInitRefusesExistingStoreWithoutForce(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	resetInitGlobalsForTest()
+	initAgents = "agent-a,agent-b"
+	if err := initCmd.RunE(initCmd, nil); err != nil {
+		t.Fatalf("first init: %v", err)
+	}
+
+	resetInitGlobalsForTest()
+	initAgents = "agent-a,agent-b"
+	err := initCmd.RunE(initCmd, nil)
+	if err == nil {
+		t.Fatalf("expected error for re-init without --force")
+	}
+	if !strings.Contains(err.Error(), "--force") {
+		t.Fatalf("error = %q, want guidance to use --force", err)
+	}
+}
+
+func TestInitForceResetsExistingStore(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	resetInitGlobalsForTest()
+	initAgents = "agent-a,agent-b"
+	if err := initCmd.RunE(initCmd, nil); err != nil {
+		t.Fatalf("first init: %v", err)
+	}
+
+	s := store.Find(root)
+	if _, err := s.CreateMessage(&message.Message{
+		From:    "agent-b",
+		To:      "agent-a",
+		Type:    message.Info,
+		TS:      message.Now(),
+		Summary: "before-reset",
+		Status:  message.Open,
+		Body:    "body",
+	}); err != nil {
+		t.Fatalf("create message: %v", err)
+	}
+
+	resetInitGlobalsForTest()
+	initAgents = "agent-a"
+	initForce = true
+	if err := initCmd.RunE(initCmd, nil); err != nil {
+		t.Fatalf("force init: %v", err)
+	}
+
+	s2 := store.Find(root)
+	newMsg := &message.Message{
+		From:    "agent-a",
+		To:      "agent-a",
+		Type:    message.Info,
+		TS:      message.Now(),
+		Summary: "after-reset",
+		Status:  message.Open,
+		Body:    "body",
+	}
+	if _, err := s2.CreateMessage(newMsg); err != nil {
+		t.Fatalf("create message after force init: %v", err)
+	}
+	if newMsg.Seq != 1 {
+		t.Fatalf("new message seq = %d, want 1 after reset", newMsg.Seq)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, ".collab", "default", "agent-b")); !os.IsNotExist(err) {
+		t.Fatalf("agent-b directory should be removed by --force reset")
+	}
+
+	matches, err := filepath.Glob(filepath.Join(root, ".collab", "default", "agent-b", "*.md"))
+	if err != nil {
+		t.Fatalf("glob old agent files: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected no message files under removed agent-b directory, found %d", len(matches))
+	}
+}
+
 func resetInitGlobalsForTest() {
 	initAgents = ""
+	initForce = false
 }
