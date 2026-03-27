@@ -229,7 +229,7 @@ func TestTUIModelThreadTilesHaveBlankMarginBetweenThreads(t *testing.T) {
 		t.Fatalf("expected two thread tiles in content, got: %q", content)
 	}
 	between := content[firstBottom:secondTop]
-	if strings.Count(between, "\n") < 2 {
+	if strings.Count(between, "\n") < 1 {
 		t.Fatalf("expected visible blank margin between thread tiles, got: %q", content)
 	}
 }

@@ -57,6 +57,7 @@ type conversationRow struct {
 	seq        int
 	rootSeq    int
 	followUps  int
+	depth      int
 	selectable bool
 	kind       string
 }
@@ -547,6 +548,12 @@ func (m *tuiModel) buildThreadedRows(msgs []*message.Message) []conversationRow 
 			sort.Slice(flattened, func(i, j int) bool {
 				return flattened[i].Seq < flattened[j].Seq
 			})
+			bySeq := make(map[int]*message.Message, len(flattened))
+			for _, msg := range flattened {
+				if msg != nil {
+					bySeq[msg.Seq] = msg
+				}
+			}
 			for _, msg := range flattened {
 				if msg == nil || msg.Seq == rootSeq {
 					continue
@@ -555,6 +562,7 @@ func (m *tuiModel) buildThreadedRows(msgs []*message.Message) []conversationRow 
 					text:       msg.Summary,
 					seq:        msg.Seq,
 					rootSeq:    rootSeq,
+					depth:      threadDepth(msg, rootSeq, bySeq),
 					selectable: true,
 					kind:       "message",
 				})
@@ -572,6 +580,7 @@ func (m *tuiModel) buildThreadedRows(msgs []*message.Message) []conversationRow 
 				text:       orphan.Message.Summary,
 				seq:        orphan.Message.Seq,
 				rootSeq:    orphan.Message.Seq,
+				depth:      1,
 				selectable: true,
 				kind:       "orphan",
 			})
@@ -599,6 +608,31 @@ func shortTime(ts string) string {
 		return ts
 	}
 	return parsed.Format("15:04")
+}
+
+func threadDepth(msg *message.Message, rootSeq int, bySeq map[int]*message.Message) int {
+	if msg == nil {
+		return 1
+	}
+	if msg.Re <= 0 || msg.Re == rootSeq {
+		return 1
+	}
+
+	depth := 1
+	parent := msg.Re
+	for parent > 0 && parent != rootSeq {
+		depth++
+		parentMsg, ok := bySeq[parent]
+		if !ok || parentMsg == nil || parentMsg.Re == parent {
+			break
+		}
+		parent = parentMsg.Re
+		if depth >= 8 {
+			break
+		}
+	}
+
+	return depth
 }
 
 func (m *tuiModel) buildTimelineRows(msgs []*message.Message) []conversationRow {
@@ -851,7 +885,7 @@ func (m *tuiModel) threadedRowsText(width int) string {
 		}
 	}
 
-	return strings.Join(blocks, "\n\n")
+	return strings.Join(blocks, "\n")
 }
 
 func (m *tuiModel) renderThreadTile(header conversationRow, headerIdx int, children []conversationRow, childIndexes []int, width, refSeq int) string {
@@ -878,7 +912,7 @@ func (m *tuiModel) renderThreadTile(header conversationRow, headerIdx int, child
 		msg := m.messageBySeq[row.seq]
 		selected := childIndexes[i] == m.selectedRowIdx
 		referenced := refSeq > 0 && row.seq == refSeq
-		bodyLines = append(bodyLines, m.renderThreadMessageLine(msg, contentWidth, selected, referenced))
+		bodyLines = append(bodyLines, m.renderThreadMessageLine(row, msg, contentWidth, selected, referenced))
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left, bodyLines...)
 
@@ -971,7 +1005,7 @@ func (m *tuiModel) renderThreadHeaderLine(row conversationRow, root *message.Mes
 	return style.Render(line)
 }
 
-func (m *tuiModel) renderThreadMessageLine(msg *message.Message, width int, selected bool, referenced bool) string {
+func (m *tuiModel) renderThreadMessageLine(row conversationRow, msg *message.Message, width int, selected bool, referenced bool) string {
 	if msg == nil {
 		return lipgloss.NewStyle().Width(width).MaxWidth(width).Render("")
 	}
@@ -1030,6 +1064,13 @@ func (m *tuiModel) renderThreadMessageLine(msg *message.Message, width int, sele
 	if referenced {
 		summaryText = iconReference + " " + summaryText
 	}
+	summaryText = threadSummaryPrefix(row.depth) + summaryText
+	guideWidth := 2
+	if summaryWidth < 6 {
+		guideWidth = 1
+	}
+	textWidth := max(summaryWidth-guideWidth, 1)
+
 	summaryStyle := lipgloss.NewStyle().Width(summaryWidth).MaxWidth(summaryWidth)
 	if m.colorEnabled {
 		summaryStyle = summaryStyle.Background(lipgloss.Color(summaryBG)).Foreground(lipgloss.Color(summaryFG)).ColorWhitespace(true)
@@ -1037,13 +1078,37 @@ func (m *tuiModel) renderThreadMessageLine(msg *message.Message, width int, sele
 	if referenced {
 		summaryStyle = summaryStyle.Foreground(lipgloss.Color("#FDE68A")).Bold(true)
 	}
-	summaryCell := summaryStyle.Render(fitCellContent(summaryText, summaryWidth))
+
+	guideStyle := summaryStyle.Copy().Width(guideWidth).MaxWidth(guideWidth)
+	textStyle := summaryStyle.Copy().Width(textWidth).MaxWidth(textWidth)
+	if m.colorEnabled {
+		guideStyle = guideStyle.Foreground(lipgloss.Color("#6F7D90"))
+	}
+	guideText := "│ "
+	if guideWidth == 1 {
+		guideText = "│"
+	}
+	summaryCell := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		guideStyle.Render(guideText),
+		textStyle.Render(fitCellContent(summaryText, textWidth)),
+	)
 
 	line := lipgloss.JoinHorizontal(lipgloss.Top, metaCell, summaryCell)
 	if !m.colorEnabled && selected {
 		return lipgloss.NewStyle().Bold(true).Width(width).MaxWidth(width).Render(line)
 	}
 	return lipgloss.NewStyle().Width(width).MaxWidth(width).Render(line)
+}
+
+func threadSummaryPrefix(depth int) string {
+	if depth <= 1 {
+		return "▸ "
+	}
+	if depth > 8 {
+		depth = 8
+	}
+	return strings.Repeat("  ", depth-1) + "└ "
 }
 
 func shortDate(ts string) string {
