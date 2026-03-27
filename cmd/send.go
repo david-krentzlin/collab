@@ -60,6 +60,9 @@ The sender identity comes from the COLLAB_AGENT environment variable.`,
 			return err
 		}
 		s := store.Find(cwd)
+		if err := s.ValidateRecipient(sendTo); err != nil {
+			return err
+		}
 
 		msg := &message.Message{
 			From:    from,

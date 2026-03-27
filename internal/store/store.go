@@ -68,6 +68,36 @@ func resolveTask(raw string) string {
 	return task
 }
 
+// ValidateRecipient validates that a message recipient exists or is broadcast.
+func (s *Store) ValidateRecipient(recipient string) error {
+	if strings.TrimSpace(recipient) == "" {
+		return fmt.Errorf("recipient is required")
+	}
+	if strings.EqualFold(recipient, BroadcastTo) {
+		return nil
+	}
+
+	agents, err := s.Agents()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("unknown recipient %q (no agents initialized; run collab init --agents ...)", recipient)
+		}
+		return fmt.Errorf("list known agents: %w", err)
+	}
+
+	for _, agent := range agents {
+		if agent == recipient {
+			return nil
+		}
+	}
+
+	if len(agents) == 0 {
+		return fmt.Errorf("unknown recipient %q (no agents initialized; run collab init --agents ...)", recipient)
+	}
+
+	return fmt.Errorf("unknown recipient %q (known agents: %s)", recipient, strings.Join(agents, ", "))
+}
+
 // Init creates the .collab directory and agent subdirectories.
 func (s *Store) Init(agents []string) error {
 	if err := os.MkdirAll(s.Root, 0o755); err != nil {
