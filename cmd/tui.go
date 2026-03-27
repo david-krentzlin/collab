@@ -22,6 +22,7 @@ import (
 const (
 	tuiPaneSeparatorWidth = 1
 	tuiRefreshInterval    = time.Second
+	tuiTopbarTitle        = "collab viewer"
 )
 
 type tuiTickMsg struct{}
@@ -102,27 +103,40 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *tuiModel) View() tea.View {
-	leftWidth, rightWidth := m.paneWidths(m.width)
+	totalWidth := m.width
+	if totalWidth <= 0 {
+		totalWidth = 1
+	}
 
+	topbarStyle := lipgloss.NewStyle().Width(totalWidth).Align(lipgloss.Center)
+	lines := make([]string, 0, max(m.height, 1))
+	lines = append(lines, topbarStyle.Render(tuiTopbarTitle))
+
+	if m.height <= 1 {
+		v := tea.NewView(strings.Join(lines, "\n"))
+		v.AltScreen = true
+		return v
+	}
+
+	leftWidth, rightWidth := m.paneWidths(totalWidth)
 	headerStyleLeft := lipgloss.NewStyle().Width(leftWidth).MaxWidth(leftWidth)
 	headerStyleRight := lipgloss.NewStyle().Width(rightWidth).MaxWidth(rightWidth)
+	bodyStyleLeft := lipgloss.NewStyle().Width(leftWidth).MaxWidth(leftWidth)
+	bodyStyleRight := lipgloss.NewStyle().Width(rightWidth).MaxWidth(rightWidth)
 
-	header := headerStyleLeft.Render("Tasks") + "|" + headerStyleRight.Render("Conversations")
+	header := headerStyleLeft.Render(" Tasks") + "│" + headerStyleRight.Render(" Conversations")
+	lines = append(lines, header)
 
-	dividerWidth := m.width
-	if dividerWidth <= 0 {
-		dividerWidth = lipgloss.Width(header)
-	}
-	divider := strings.Repeat("-", dividerWidth)
-
-	lineCount := m.height
-	if lineCount < 2 {
-		lineCount = 2
+	if m.height <= 2 {
+		v := tea.NewView(strings.Join(lines, "\n"))
+		v.AltScreen = true
+		return v
 	}
 
-	lines := make([]string, 0, lineCount)
-	lines = append(lines, header, divider)
-	bodyRows := max(lineCount-2, 0)
+	separator := strings.Repeat("─", leftWidth) + "┼" + strings.Repeat("─", rightWidth)
+	lines = append(lines, separator)
+
+	bodyRows := max(m.height-3, 0)
 	for row := 0; row < bodyRows; row++ {
 		leftContent := ""
 		if row < len(m.tasks) {
@@ -135,9 +149,9 @@ func (m *tuiModel) View() tea.View {
 			rightContent = rightLines[row]
 		}
 
-		leftRendered := headerStyleLeft.Render(leftContent)
-		rightRendered := headerStyleRight.Render(rightContent)
-		lines = append(lines, leftRendered+"|"+rightRendered)
+		leftRendered := bodyStyleLeft.Render(fitCellContent(leftContent, leftWidth))
+		rightRendered := bodyStyleRight.Render(fitCellContent(rightContent, rightWidth))
+		lines = append(lines, leftRendered+"│"+rightRendered)
 	}
 
 	v := tea.NewView(strings.Join(lines, "\n"))
@@ -450,7 +464,7 @@ func (m *tuiModel) paneWidths(totalWidth int) (left, right int) {
 
 func (m *tuiModel) syncViewportSize() {
 	_, rightWidth := m.paneWidths(m.width)
-	bodyRows := max(m.height-2, 0)
+	bodyRows := max(m.height-3, 0)
 	m.convoViewport.SetWidth(rightWidth)
 	m.convoViewport.SetHeight(bodyRows)
 }
@@ -461,9 +475,28 @@ func nextTUITickCmd() tea.Cmd {
 	})
 }
 
-var tuiCmd = &cobra.Command{
-	Use:   "tui",
-	Short: "Open a terminal UI for pairing conversations",
+func fitCellContent(content string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	clean := strings.ReplaceAll(content, "\n", " ")
+	if lipgloss.Width(clean) <= width {
+		return clean
+	}
+
+	runes := []rune(clean)
+	if width == 1 {
+		return "…"
+	}
+
+	return string(runes[:width-1]) + "…"
+}
+
+var viewerCmd = &cobra.Command{
+	Use:     "viewer",
+	Aliases: []string{"tui"},
+	Short:   "Open a terminal UI for pairing conversations",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		program := tea.NewProgram(newTUIModel())
 		_, err := program.Run()

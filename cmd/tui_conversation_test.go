@@ -50,8 +50,8 @@ func TestTUIModelViewportUpdatesSizeOnWindowResize(t *testing.T) {
 	if got := resized.convoViewport.Width(); got != right {
 		t.Fatalf("viewport width = %d, want %d", got, right)
 	}
-	if got := resized.convoViewport.Height(); got != 38 {
-		t.Fatalf("viewport height = %d, want %d", got, 38)
+	if got := resized.convoViewport.Height(); got != 37 {
+		t.Fatalf("viewport height = %d, want %d", got, 37)
 	}
 }
 

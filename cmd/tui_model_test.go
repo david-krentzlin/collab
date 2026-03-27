@@ -12,14 +12,56 @@ func TestTUIModelViewRendersTwoPaneHeaders(t *testing.T) {
 	m.setSize(80, 24)
 
 	view := m.View().Content
+	lines := strings.Split(view, "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected at least 3 lines in view, got %d", len(lines))
+	}
+
+	if !strings.Contains(lines[0], "collab viewer") {
+		t.Fatalf("view missing topbar title on first line: %q", view)
+	}
 	if !strings.Contains(view, "Tasks") {
 		t.Fatalf("view missing Tasks header: %q", view)
 	}
 	if !strings.Contains(view, "Conversations") {
 		t.Fatalf("view missing Conversations header: %q", view)
 	}
-	if !strings.Contains(strings.Split(view, "\n")[0], "|") {
+	if !strings.Contains(lines[1], "│") {
 		t.Fatalf("header should contain pane separator: %q", view)
+	}
+}
+
+func TestTUIModelViewUsesContinuousVerticalDivider(t *testing.T) {
+	m := newTUIModel()
+	m.setSize(60, 10)
+
+	view := m.View().Content
+	lines := strings.Split(view, "\n")
+	if len(lines) < 4 {
+		t.Fatalf("expected enough lines for topbar+header+body, got %d", len(lines))
+	}
+
+	headerLine := lines[1]
+	headerRunes := []rune(headerLine)
+	dividerIdx := -1
+	for i, r := range headerRunes {
+		if r == '│' {
+			dividerIdx = i
+			break
+		}
+	}
+	if dividerIdx == -1 {
+		t.Fatalf("expected divider glyph in header line, got %q", headerLine)
+	}
+
+	for i := 2; i < len(lines); i++ {
+		lineRunes := []rune(lines[i])
+		if dividerIdx >= len(lineRunes) {
+			t.Fatalf("line %d too short for divider index %d: %q", i, dividerIdx, lines[i])
+		}
+		if lineRunes[dividerIdx] != '│' && lineRunes[dividerIdx] != '┼' {
+			t.Fatalf("line %d missing continuous divider at column %d: %q", i, dividerIdx, lines[i])
+		}
 	}
 }
 
