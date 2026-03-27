@@ -31,4 +31,5 @@ func init() {
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(exportCmd)
 	rootCmd.AddCommand(logCmd)
+	rootCmd.AddCommand(tuiCmd)
 }
