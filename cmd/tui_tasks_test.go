@@ -72,6 +72,29 @@ func TestTUIModelTaskLineShowsMessageCount(t *testing.T) {
 	}
 }
 
+func TestTUIModelRenderTaskPaneRowShowsFolderAndCount(t *testing.T) {
+	m := newTUIModel()
+	m.tasks = []taskItem{{name: "task-a", messageCount: 9}}
+
+	row := m.renderTaskPaneRow(0, 24)
+	if !strings.Contains(row, iconTask) {
+		t.Fatalf("task row should include folder icon, got %q", row)
+	}
+	if !strings.Contains(row, "(9)") {
+		t.Fatalf("task row should include count, got %q", row)
+	}
+}
+
+func TestTUIModelRenderTaskPaneRowShowsUnreadMarker(t *testing.T) {
+	m := newTUIModel()
+	m.tasks = []taskItem{{name: "task-a", messageCount: 1, hasUnread: true}}
+
+	row := m.renderTaskPaneRow(0, 24)
+	if !strings.Contains(row, "●") {
+		t.Fatalf("task row should include unread marker, got %q", row)
+	}
+}
+
 func TestTUIModelMarksSelectedTaskWithStar(t *testing.T) {
 	m := newTUIModel()
 	m.tasks = []taskItem{{name: "task-a"}, {name: "task-b"}}

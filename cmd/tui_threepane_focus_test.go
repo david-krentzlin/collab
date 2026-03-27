@@ -30,6 +30,12 @@ func TestTUIModelPaneWidthsFillTerminal(t *testing.T) {
 	if tasks+threads+details+tuiPaneSeparatorWidth != 120 {
 		t.Fatalf("pane widths should fill full width: tasks=%d threads=%d details=%d sep=%d", tasks, threads, details, tuiPaneSeparatorWidth)
 	}
+	if tasks != 23 {
+		t.Fatalf("tasks pane width = %d, want 23 (~20%% of usable width)", tasks)
+	}
+	if threads+details != 93 {
+		t.Fatalf("threads+details width = %d, want 93 (~80%% of usable width)", threads+details)
+	}
 }
 
 func TestTUIModelTabCyclesFocusAcrossPanes(t *testing.T) {

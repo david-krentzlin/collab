@@ -34,6 +34,7 @@ const (
 	iconOpen      = ""
 	iconResolved  = ""
 	iconReference = "󰌷"
+	iconTask      = "󰉋"
 )
 
 type tuiTickMsg struct{}
@@ -252,14 +253,12 @@ func (m *tuiModel) View() tea.View {
 	topbarStyle := lipgloss.NewStyle().Width(totalWidth).Align(lipgloss.Center)
 	headerStyleLeft := lipgloss.NewStyle()
 	headerStyleRight := lipgloss.NewStyle()
-	selectedTaskStyle := lipgloss.NewStyle()
 	footerStyle := lipgloss.NewStyle().Width(totalWidth).Align(lipgloss.Center)
 
 	if m.colorEnabled {
 		topbarStyle = topbarStyle.Bold(true).Foreground(lipgloss.Color("#CDD6F4")).Background(lipgloss.Color("#313244"))
 		headerStyleLeft = headerStyleLeft.Bold(true).Foreground(lipgloss.Color("#BAC2DE"))
 		headerStyleRight = headerStyleRight.Bold(true).Foreground(lipgloss.Color("#BAC2DE"))
-		selectedTaskStyle = selectedTaskStyle.Foreground(lipgloss.Color("#F9E2AF")).Background(lipgloss.Color("#45475A"))
 		footerStyle = footerStyle.Foreground(lipgloss.Color("#A6ADC8"))
 	}
 	footerLine := footerStyle.Render(fitCellContent(m.footerText(), totalWidth))
@@ -287,6 +286,9 @@ func (m *tuiModel) View() tea.View {
 	bodyStyleTasks := lipgloss.NewStyle().Width(tasksWidth).MaxWidth(tasksWidth)
 	bodyStyleThreads := lipgloss.NewStyle().Width(threadsWidth).MaxWidth(threadsWidth)
 	bodyStyleDetails := lipgloss.NewStyle().Width(detailsWidth).MaxWidth(detailsWidth)
+	if m.colorEnabled {
+		bodyStyleTasks = bodyStyleTasks.Background(lipgloss.Color("#0D1322")).ColorWhitespace(true)
+	}
 
 	topFrame := "┌" + strings.Repeat("─", tasksWidth) + "┬" + strings.Repeat("─", threadsWidth) + "┬" + strings.Repeat("─", detailsWidth) + "┐"
 	lines = append(lines, topFrame)
@@ -315,10 +317,7 @@ func (m *tuiModel) View() tea.View {
 	threadLines := strings.Split(m.convoViewport.View(), "\n")
 	detailLines := strings.Split(m.detailsViewport.View(), "\n")
 	for row := 0; row < bodyRows; row++ {
-		taskContent := ""
-		if row < len(m.tasks) {
-			taskContent = m.taskLine(row)
-		}
+		taskContent := m.renderTaskPaneRow(row, tasksWidth)
 
 		threadContent := ""
 		if row < len(threadLines) {
@@ -330,11 +329,7 @@ func (m *tuiModel) View() tea.View {
 			detailContent = detailLines[row]
 		}
 
-		taskCell := fitCellContent(taskContent, tasksWidth)
-		if row < len(m.tasks) && row == m.selectedTaskIdx {
-			taskCell = selectedTaskStyle.Render(taskCell)
-		}
-		tasksRendered := bodyStyleTasks.Render(taskCell)
+		tasksRendered := bodyStyleTasks.Render(taskContent)
 
 		threadCell := threadContent
 		threadsRendered := bodyStyleThreads.Render(threadCell)
@@ -439,6 +434,62 @@ func (m *tuiModel) taskLine(i int) string {
 	}
 
 	return fmt.Sprintf("%s%s (%d)%s", selectionMark, task.name, task.messageCount, unreadMark)
+}
+
+func (m *tuiModel) renderTaskPaneRow(i, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if i < 0 || i >= len(m.tasks) {
+		return strings.Repeat(" ", width)
+	}
+
+	task := m.tasks[i]
+	selected := i == m.selectedTaskIdx
+	innerWidth := max(width-2, 1)
+	countText := "(" + strconv.Itoa(task.messageCount) + ")"
+	countWidth := lipgloss.Width(countText)
+	if countWidth+1 > innerWidth {
+		countText = ""
+		countWidth = 0
+	}
+
+	leftWidth := innerWidth
+	if countWidth > 0 {
+		leftWidth = innerWidth - countWidth - 1
+	}
+	if leftWidth < 1 {
+		leftWidth = 1
+	}
+
+	leftText := iconTask + " " + task.name
+	if task.hasUnread {
+		leftText += " ●"
+	}
+
+	rowStyle := lipgloss.NewStyle().Width(width).MaxWidth(width).Padding(0, 1)
+	leftStyle := lipgloss.NewStyle().Width(leftWidth).MaxWidth(leftWidth)
+	countStyle := lipgloss.NewStyle().Width(countWidth).Align(lipgloss.Right)
+	if m.colorEnabled {
+		rowStyle = rowStyle.Background(lipgloss.Color("#0D1322")).Foreground(lipgloss.Color("#C7D2E4")).ColorWhitespace(true)
+		leftStyle = leftStyle.Foreground(lipgloss.Color("#C7D2E4"))
+		countStyle = countStyle.Foreground(lipgloss.Color("#9AA8C0"))
+		if task.hasUnread {
+			leftStyle = leftStyle.Foreground(lipgloss.Color("#E1E9F7")).Bold(true)
+		}
+		if selected {
+			rowStyle = rowStyle.Background(lipgloss.Color("#2D3C58")).Foreground(lipgloss.Color("#EEF3FC")).ColorWhitespace(true)
+			leftStyle = leftStyle.Foreground(lipgloss.Color("#EEF3FC")).Bold(true)
+			countStyle = countStyle.Foreground(lipgloss.Color("#DFE8F8")).Bold(true)
+		}
+	}
+
+	leftCell := leftStyle.Render(fitCellContent(leftText, leftWidth))
+	if countWidth == 0 {
+		return rowStyle.Render(leftCell)
+	}
+	countCell := countStyle.Render(countText)
+	return rowStyle.Render(lipgloss.JoinHorizontal(lipgloss.Top, leftCell, " ", countCell))
 }
 
 func (m *tuiModel) markSelectedTaskSeen() {
@@ -938,11 +989,11 @@ func (m *tuiModel) renderThreadTile(header conversationRow, headerIdx int, child
 	marginY := 0
 	paddingX := 1
 	chrome := marginX*2 + paddingX*2 + 2
-	contentWidth := width - chrome - 4
+	contentWidth := width - chrome
 	if contentWidth < 16 {
 		paddingX = 0
 		chrome = marginX*2 + 2
-		contentWidth = width - chrome - 3
+		contentWidth = width - chrome
 	}
 	if contentWidth < 1 {
 		contentWidth = 1
@@ -1774,15 +1825,16 @@ func (m *tuiModel) paneWidths(totalWidth int) (tasks, threads, details int) {
 	}
 
 	available := totalWidth - tuiPaneSeparatorWidth
-	tasks = available / 4
+	tasks = available / 5
 	if tasks < 1 {
 		tasks = 1
 	}
-	threads = (available - tasks) / 2
+	remaining := available - tasks
+	threads = remaining / 2
 	if threads < 1 {
 		threads = 1
 	}
-	details = available - tasks - threads
+	details = remaining - threads
 	if details < 1 {
 		details = 1
 		if threads > 1 {
