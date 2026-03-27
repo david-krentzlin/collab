@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/david-krentzlin/collab/internal/message"
 	"github.com/david-krentzlin/collab/internal/render"
@@ -71,12 +72,17 @@ func buildExport(s *store.Store) (*render.TaskExport, error) {
 
 	// Read full messages
 	msgs := make([]*message.Message, 0, len(entries))
+	readErrs := make([]string, 0)
 	for _, e := range entries {
 		msg, err := s.ReadMessageAtPath(e.Path)
 		if err != nil {
+			readErrs = append(readErrs, fmt.Sprintf("seq #%d (%s): %v", e.Seq, e.Path, err))
 			continue
 		}
 		msgs = append(msgs, msg)
+	}
+	if len(readErrs) > 0 {
+		return nil, fmt.Errorf("failed to read indexed messages (%d): %s", len(readErrs), strings.Join(readErrs, "; "))
 	}
 
 	threads, orphans := render.BuildThreads(msgs)

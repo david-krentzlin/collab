@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/david-krentzlin/collab/internal/store"
@@ -21,9 +22,9 @@ var initCmd = &cobra.Command{
 		if initAgents == "" {
 			return fmt.Errorf("--agents is required (comma-separated list)")
 		}
-		agents := strings.Split(initAgents, ",")
-		for i := range agents {
-			agents[i] = strings.TrimSpace(agents[i])
+		agents, err := parseAndValidateAgents(initAgents)
+		if err != nil {
+			return err
 		}
 
 		cwd, err := os.Getwd()
@@ -37,6 +38,22 @@ var initCmd = &cobra.Command{
 		fmt.Printf("Initialized .collab/%s/ with agents: %s\n", s.Task, strings.Join(agents, ", "))
 		return nil
 	},
+}
+
+func parseAndValidateAgents(raw string) ([]string, error) {
+	parts := strings.Split(raw, ",")
+	agents := make([]string, 0, len(parts))
+	for i, agent := range parts {
+		normalized := strings.TrimSpace(agent)
+		if normalized == "" {
+			return nil, fmt.Errorf("empty agent name at position %d", i+1)
+		}
+		if slices.Contains(agents, normalized) {
+			return nil, fmt.Errorf("duplicate agent %q", normalized)
+		}
+		agents = append(agents, normalized)
+	}
+	return agents, nil
 }
 
 func init() {
