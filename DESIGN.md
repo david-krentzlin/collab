@@ -36,6 +36,9 @@ Current (task-scoped; `COLLAB_TASK` defaults to `default`):
 .collab/
   default/                    # one directory per task/feature
     .seq                      # per-task sequence counter (integer)
+    .seq.lock                 # lock file for sequence allocation
+    .index.jsonl              # metadata index for fast check/read/resolve
+    .index.lock               # lock file for index writes
     agent-a/                  # agent-a's outgoing messages
       001-inquiry.md
       003-reply.md
@@ -80,8 +83,8 @@ summary: "Should we use a mutex for the seq counter?"
 status: open
 ---
 
-The seq file is read-then-write without locking.
-Two agents could collide. Should we use flock?
+Sequence allocation uses `.seq` + lock file (`.seq.lock`) and retries if a
+concurrent writer updated the counter before commit.
 ```
 
 ### Frontmatter Fields
@@ -107,18 +110,15 @@ Two agents could collide. Should we use flock?
 
 ### Sequence Counter
 
-A single `.seq` file contains an integer. On each `send`, the integer is read,
-incremented, and written back. The write uses a temp file + `os.Rename` for
-pseudo-atomic behavior.
+A single `.seq` file contains an integer. On each `send`, the value is read,
+locked, validated, incremented, and written back via temp file + rename.
 
-**Race condition risk:** Two agents sending simultaneously could read the same
-counter value. In practice this is extremely unlikely because agent tool calls
-have human-observable latency (seconds). If it becomes a problem, `flock` can
-be added to `NextSeq()` with no protocol changes.
+Sequence writes are serialized with `flock` on `.seq.lock` and guarded by an
+optimistic re-check before commit.
 
 **Why global sequence numbers:** They provide a total ordering of all messages
-across all agents. This makes reconstruction trivial: glob all `.md` files
-from all agent directories, sort by seq, and you have the complete timeline.
+across all agents. This enables deterministic replay and stable incremental
+polling with `--since`.
 
 ## Agent-Facing Tools
 
@@ -130,10 +130,9 @@ parseability. Exposed as opencode tool definitions that call the `collab` binary
 **Purpose:** Poll for new messages from other agents.
 
 **How it works:**
-1. Scans all agent directories except the caller's (identified by `COLLAB_AGENT` env var).
-2. Parses frontmatter of every `.md` file.
-3. Filters to messages with seq > `since` value.
-4. Outputs one compact line per message: seq, type, sender, re, summary.
+1. Reads `.index.jsonl` metadata (not message bodies).
+2. Filters to recipient + broadcasts and seq > `since`.
+3. Outputs one compact line per message: seq, type, sender, re, summary.
 
 **Output format:**
 ```
@@ -149,8 +148,8 @@ parseability. Exposed as opencode tool definitions that call the `collab` binary
 **Purpose:** Fetch the full body of a specific message.
 
 **How it works:**
-1. Searches all agent directories for a file matching the seq number prefix.
-2. Parses the file and outputs a compact header + full body.
+1. Resolves `seq -> path` from `.index.jsonl`.
+2. Reads/parses only that specific message file.
 
 **When to use:** After `check` reveals a message whose summary suggests it's
 relevant to the agent's current work.
