@@ -25,6 +25,14 @@ const (
 	tuiRefreshInterval    = time.Second
 	tuiTopbarTitle        = "collab viewer"
 	tuiFooterHints        = "↑/↓ select   Enter collapse   PgUp/PgDn scroll   t mode   q quit"
+
+	iconThread    = "󰘬"
+	iconExpand    = ""
+	iconCollapse  = ""
+	iconMessage   = "󰍩"
+	iconOpen      = ""
+	iconResolved  = ""
+	iconReference = "󰌷"
 )
 
 type tuiTickMsg struct{}
@@ -213,11 +221,11 @@ func (m *tuiModel) View() tea.View {
 	footerStyle := lipgloss.NewStyle().Width(totalWidth).Align(lipgloss.Center)
 
 	if m.colorEnabled {
-		topbarStyle = topbarStyle.Bold(true).Foreground(lipgloss.Color("#1F2330")).Background(lipgloss.Color("#A6E3A1"))
-		headerStyleLeft = headerStyleLeft.Bold(true).Foreground(lipgloss.Color("#89B4FA"))
-		headerStyleRight = headerStyleRight.Bold(true).Foreground(lipgloss.Color("#89B4FA"))
-		selectedTaskStyle = selectedTaskStyle.Bold(true).Foreground(lipgloss.Color("#F9E2AF"))
-		footerStyle = footerStyle.Foreground(lipgloss.Color("#BAC2DE"))
+		topbarStyle = topbarStyle.Bold(true).Foreground(lipgloss.Color("#CDD6F4")).Background(lipgloss.Color("#313244"))
+		headerStyleLeft = headerStyleLeft.Bold(true).Foreground(lipgloss.Color("#BAC2DE"))
+		headerStyleRight = headerStyleRight.Bold(true).Foreground(lipgloss.Color("#BAC2DE"))
+		selectedTaskStyle = selectedTaskStyle.Foreground(lipgloss.Color("#F9E2AF")).Background(lipgloss.Color("#45475A"))
+		footerStyle = footerStyle.Foreground(lipgloss.Color("#A6ADC8"))
 	}
 	footerLine := footerStyle.Render(fitCellContent(m.footerText(), totalWidth))
 
@@ -294,8 +302,10 @@ func (m *tuiModel) View() tea.View {
 		tasksRendered := bodyStyleTasks.Render(taskCell)
 
 		threadCell := fitCellContent(threadContent, threadsWidth)
-		if row < len(m.conversationRows) && row == m.selectedRowIdx {
-			threadCell = selectedTaskStyle.Render(threadCell)
+		if row < len(m.conversationRows) {
+			rowMeta := m.conversationRows[row]
+			isRef := m.selectedMessageReferenceSeq() > 0 && rowMeta.seq == m.selectedMessageReferenceSeq()
+			threadCell = m.styleThreadCell(threadCell, rowMeta, row == m.selectedRowIdx, isRef)
 		}
 		threadsRendered := bodyStyleThreads.Render(threadCell)
 
@@ -501,7 +511,7 @@ func (m *tuiModel) refreshSelectedConversation() error {
 			m.selectedMessageSeq = rows[m.selectedRowIdx].seq
 			m.selectedThreadRoot = rows[m.selectedRowIdx].rootSeq
 		}
-		m.convoViewport.SetContent(conversationRowsText(rows))
+		m.refreshConversationViewportContent()
 		m.refreshDetailsFromSelection()
 	}
 
@@ -523,22 +533,34 @@ func (m *tuiModel) buildThreadedRows(msgs []*message.Message) []conversationRow 
 		root := thread.Root.Message
 		rootSeq := root.Seq
 		collapsed := m.collapsedThreads[rootSeq]
-		state := "[-]"
-		if collapsed {
-			state = "[+]"
+		flattened := render.FlattenThread(thread)
+		followUps := len(flattened) - 1
+		if followUps < 0 {
+			followUps = 0
 		}
-
-		count := len(render.FlattenThread(thread))
-		header := fmt.Sprintf("┌ %s Thread #%d %s [%s] %s (%d msgs)", state, rootSeq, m.agentLabel(root.From), root.Type, root.Summary, count)
+		header := m.formatThreadHeader(root, followUps, collapsed)
 		rows = append(rows, conversationRow{text: header, seq: rootSeq, rootSeq: rootSeq, selectable: true, kind: "thread-header"})
 
 		if !collapsed {
-			for i, child := range thread.Root.Children {
-				appendThreadChildRows(&rows, child, "", i == len(thread.Root.Children)-1, rootSeq, m)
+			sort.Slice(flattened, func(i, j int) bool {
+				return flattened[i].Seq < flattened[j].Seq
+			})
+			for _, msg := range flattened {
+				if msg == nil || msg.Seq == rootSeq {
+					continue
+				}
+				rows = append(rows, conversationRow{
+					text:       m.formatThreadMessageRow(msg),
+					seq:        msg.Seq,
+					rootSeq:    rootSeq,
+					selectable: true,
+					kind:       "message",
+				})
 			}
 		}
 
 		rows = append(rows, conversationRow{text: "└", seq: 0, rootSeq: rootSeq, selectable: false, kind: "thread-bottom"})
+		rows = append(rows, conversationRow{text: "", seq: 0, rootSeq: 0, selectable: false, kind: "spacer"})
 		rows = append(rows, conversationRow{text: "", seq: 0, rootSeq: 0, selectable: false, kind: "spacer"})
 	}
 
@@ -565,32 +587,46 @@ func (m *tuiModel) buildThreadedRows(msgs []*message.Message) []conversationRow 
 	return rows
 }
 
-func appendThreadChildRows(rows *[]conversationRow, node *render.Node, prefix string, isLast bool, rootSeq int, m *tuiModel) {
-	if node == nil || node.Message == nil {
-		return
+func (m *tuiModel) formatThreadHeader(root *message.Message, followUps int, collapsed bool) string {
+	marker := iconExpand
+	if collapsed {
+		marker = iconCollapse
 	}
-
-	connector := "├─ "
-	if isLast {
-		connector = "└─ "
+	plural := "follow-up"
+	if followUps != 1 {
+		plural = "follow-ups"
 	}
-	line := fmt.Sprintf("│ %s%s%s", prefix, connector, m.formatThreadMessage(node.Message))
-	*rows = append(*rows, conversationRow{text: line, seq: node.Message.Seq, rootSeq: rootSeq, selectable: true, kind: "message"})
-
-	childPrefix := prefix
-	if isLast {
-		childPrefix += "   "
-	} else {
-		childPrefix += "│  "
-	}
-
-	for i, child := range node.Children {
-		appendThreadChildRows(rows, child, childPrefix, i == len(node.Children)-1, rootSeq, m)
-	}
+	return fmt.Sprintf("┌ %s %s #%d  %s  ·  %d %s", marker, iconThread, root.Seq, root.Summary, followUps, plural)
 }
 
 func (m *tuiModel) formatThreadMessage(msg *message.Message) string {
 	return fmt.Sprintf("#%d %s [%s] %s", msg.Seq, m.agentLabel(msg.From), msg.Type, msg.Summary)
+}
+
+func (m *tuiModel) formatThreadMessageRow(msg *message.Message) string {
+	icon := statusIcon(msg.Status)
+	timeLabel := shortTime(msg.TS)
+	return fmt.Sprintf("│ %s %s %-10s %s  ·  %s", iconMessage, icon, msg.From, msg.Summary, timeLabel)
+}
+
+func statusIcon(status message.Status) string {
+	switch status {
+	case message.Resolved:
+		return iconResolved
+	default:
+		return iconOpen
+	}
+}
+
+func shortTime(ts string) string {
+	if ts == "" {
+		return "--:--"
+	}
+	parsed, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return ts
+	}
+	return parsed.Format("15:04")
 }
 
 func (m *tuiModel) buildTimelineRows(msgs []*message.Message) []conversationRow {
@@ -740,15 +776,61 @@ func firstSelectableConversationRow(rows []conversationRow) int {
 	return 0
 }
 
-func conversationRowsText(rows []conversationRow) string {
-	if len(rows) == 0 {
+func (m *tuiModel) selectedMessageReferenceSeq() int {
+	msg, ok := m.messageBySeq[m.selectedMessageSeq]
+	if !ok || msg == nil {
+		return 0
+	}
+	return msg.Re
+}
+
+func (m *tuiModel) styleThreadCell(content string, row conversationRow, selected bool, referenced bool) string {
+	if !m.colorEnabled {
+		return content
+	}
+
+	style := lipgloss.NewStyle()
+	if row.rootSeq > 0 {
+		style = style.Background(lipgloss.Color("#2A2D38")).Foreground(lipgloss.Color("#CDD6F4"))
+	}
+	if row.kind == "thread-header" {
+		style = style.Bold(true).Foreground(lipgloss.Color("#89B4FA"))
+	}
+	if referenced {
+		style = style.Foreground(lipgloss.Color("#F9E2AF"))
+	}
+	if selected {
+		style = style.Bold(true).Foreground(lipgloss.Color("#A6E3A1")).Background(lipgloss.Color("#3A3D46"))
+	}
+
+	return style.Render(content)
+}
+
+func (m *tuiModel) conversationRowsText() string {
+	if len(m.conversationRows) == 0 {
 		return "(no messages)"
 	}
-	lines := make([]string, 0, len(rows))
-	for _, row := range rows {
-		lines = append(lines, row.text)
+
+	refSeq := m.selectedMessageReferenceSeq()
+	lines := make([]string, 0, len(m.conversationRows))
+	for _, row := range m.conversationRows {
+		line := row.text
+		if refSeq > 0 && row.seq == refSeq {
+			line = iconReference + " " + line
+		}
+		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n")
+}
+
+func (m *tuiModel) refreshConversationViewportContent() {
+	offset := m.convoViewport.YOffset()
+	m.convoViewport.SetContent(m.conversationRowsText())
+	if m.autoFollow {
+		m.convoViewport.GotoBottom()
+		return
+	}
+	m.convoViewport.SetYOffset(offset)
 }
 
 func (m *tuiModel) restoreConversationSelection() {
@@ -830,6 +912,7 @@ func (m *tuiModel) moveConversationSelection(delta int) {
 			m.selectedRowIdx = idx
 			m.selectedMessageSeq = m.conversationRows[idx].seq
 			m.selectedThreadRoot = m.conversationRows[idx].rootSeq
+			m.refreshConversationViewportContent()
 			m.refreshDetailsFromSelection()
 			m.autoFollow = false
 			return
@@ -846,7 +929,7 @@ func (m *tuiModel) toggleSelectedThreadCollapse() {
 	}
 
 	row := m.conversationRows[m.selectedRowIdx]
-	if row.rootSeq == 0 {
+	if row.rootSeq == 0 || row.kind != "thread-header" {
 		return
 	}
 

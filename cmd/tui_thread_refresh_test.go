@@ -30,14 +30,14 @@ func TestTUIModelThreadedFormattingShowsParentChildStructure(t *testing.T) {
 	}
 
 	content := m.convoViewport.GetContent()
-	if !strings.Contains(content, "#1 alice [reply] root") {
+	if !strings.Contains(content, iconThread+" #1") || !strings.Contains(content, "root") {
 		t.Fatalf("missing root line: %q", content)
 	}
-	if !strings.Contains(content, "│ ├─ #2 bob [reply] child-a") {
-		t.Fatalf("missing sibling child-a connector: %q", content)
+	if !strings.Contains(content, "│ "+iconMessage+" "+iconOpen+" bob") || !strings.Contains(content, "child-a") {
+		t.Fatalf("missing child-a row: %q", content)
 	}
-	if !strings.Contains(content, "│ └─ #3 carol [reply] child-b") {
-		t.Fatalf("missing sibling child-b connector: %q", content)
+	if !strings.Contains(content, "│ "+iconMessage+" "+iconOpen+" carol") || !strings.Contains(content, "child-b") {
+		t.Fatalf("missing child-b row: %q", content)
 	}
 }
 
@@ -61,11 +61,11 @@ func TestTUIModelThreadedFormattingShowsNestedReplyDepth(t *testing.T) {
 	}
 
 	content := m.convoViewport.GetContent()
-	if !strings.Contains(content, "│ └─ #2 bob [reply] level-1") {
-		t.Fatalf("missing level-1 nested connector: %q", content)
+	if !strings.Contains(content, "│ "+iconMessage+" "+iconOpen+" bob") || !strings.Contains(content, "level-1") {
+		t.Fatalf("missing level-1 row: %q", content)
 	}
-	if !strings.Contains(content, "│    └─ #3 carol [reply] level-2") {
-		t.Fatalf("missing level-2 nested indentation: %q", content)
+	if !strings.Contains(content, "│ "+iconMessage+" "+iconOpen+" carol") || !strings.Contains(content, "level-2") {
+		t.Fatalf("missing level-2 row: %q", content)
 	}
 }
 
