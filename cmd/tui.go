@@ -164,6 +164,7 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case focusDetails:
 				m.detailsViewport.PageDown()
 			case focusThreads:
+				m.autoFollow = false
 				m.convoViewport.PageDown()
 				if m.convoViewport.AtBottom() {
 					m.autoFollow = true
@@ -191,6 +192,7 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.autoFollow = false
 			case tea.MouseWheelDown:
 				m.convoViewport.ScrollDown(delta)
+				m.autoFollow = false
 				if m.convoViewport.AtBottom() {
 					m.autoFollow = true
 				}
@@ -509,6 +511,9 @@ func (m *tuiModel) refreshSelectedConversation() error {
 			m.selectedThreadRoot = rows[m.selectedRowIdx].rootSeq
 		}
 		m.refreshConversationViewportContent()
+		if !m.autoFollow {
+			m.ensureSelectedConversationVisible()
+		}
 		m.refreshDetailsFromSelection()
 	}
 
@@ -1132,6 +1137,71 @@ func (m *tuiModel) refreshConversationViewportContent() {
 	m.convoViewport.SetYOffset(offset)
 }
 
+func (m *tuiModel) selectedConversationLine() int {
+	if len(m.conversationRows) == 0 {
+		return 0
+	}
+	if m.selectedRowIdx < 0 {
+		return 0
+	}
+	if m.selectedRowIdx >= len(m.conversationRows) {
+		return len(m.conversationRows) - 1
+	}
+
+	if m.renderMode != renderModeThreaded {
+		return m.selectedRowIdx
+	}
+
+	line := 0
+	for i := 0; i < len(m.conversationRows); {
+		row := m.conversationRows[i]
+		switch row.kind {
+		case "thread-header":
+			childCount := 0
+			if i == m.selectedRowIdx {
+				return line + 1
+			}
+			j := i + 1
+			for j < len(m.conversationRows) && m.conversationRows[j].rootSeq == row.rootSeq && m.conversationRows[j].kind == "message" {
+				if j == m.selectedRowIdx {
+					return line + 2 + childCount
+				}
+				childCount++
+				j++
+			}
+			line += childCount + 3 // border top + header + children + border bottom
+			i = j
+		default:
+			if i == m.selectedRowIdx {
+				return line
+			}
+			line++
+			i++
+		}
+	}
+
+	return 0
+}
+
+func (m *tuiModel) ensureSelectedConversationVisible() {
+	if m.convoViewport.Height() <= 0 || len(m.conversationRows) == 0 {
+		return
+	}
+
+	selectedLine := m.selectedConversationLine()
+	offset := m.convoViewport.YOffset()
+	height := m.convoViewport.Height()
+	if selectedLine < offset {
+		m.convoViewport.SetYOffset(selectedLine)
+		return
+	}
+
+	bottom := offset + height - 1
+	if selectedLine > bottom {
+		m.convoViewport.SetYOffset(selectedLine - height + 1)
+	}
+}
+
 func (m *tuiModel) restoreConversationSelection() {
 	if len(m.conversationRows) == 0 {
 		m.selectedRowIdx = 0
@@ -1211,9 +1281,10 @@ func (m *tuiModel) moveConversationSelection(delta int) {
 			m.selectedRowIdx = idx
 			m.selectedMessageSeq = m.conversationRows[idx].seq
 			m.selectedThreadRoot = m.conversationRows[idx].rootSeq
-			m.refreshConversationViewportContent()
-			m.refreshDetailsFromSelection()
 			m.autoFollow = false
+			m.refreshConversationViewportContent()
+			m.ensureSelectedConversationVisible()
+			m.refreshDetailsFromSelection()
 			return
 		}
 	}
@@ -1238,8 +1309,9 @@ func (m *tuiModel) toggleSelectedThreadCollapse() {
 	m.collapsedThreads[row.rootSeq] = !m.collapsedThreads[row.rootSeq]
 	m.selectedMessageSeq = row.rootSeq
 	m.selectedThreadRoot = row.rootSeq
-	_ = m.refreshSelectedConversation()
 	m.autoFollow = false
+	_ = m.refreshSelectedConversation()
+	m.ensureSelectedConversationVisible()
 }
 
 func (m *tuiModel) moveTaskSelection(delta int) {

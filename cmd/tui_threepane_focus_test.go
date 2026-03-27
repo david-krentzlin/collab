@@ -251,3 +251,81 @@ func TestTUIModelPeriodicRefreshUpdatesThreadsAndDetails(t *testing.T) {
 		t.Fatalf("details pane should remain populated after refresh")
 	}
 }
+
+func TestTUIModelThreadSelectionKeepsSelectedRowVisibleWhenFollowWasOn(t *testing.T) {
+	root := t.TempDir()
+	s := initTaskStore(t, root, "thread-visible-follow")
+	rootSeq := createThreadMessage(t, s, 0, "alice", "root")
+	for i := 0; i < 30; i++ {
+		_ = createThreadMessage(t, s, rootSeq, "bob", fmt.Sprintf("reply-%02d", i))
+	}
+
+	m := newTUIModelForBase(filepath.Join(root, store.CollabDir))
+	if err := m.refreshTasksFromDisk(); err != nil {
+		t.Fatalf("refresh tasks: %v", err)
+	}
+	m.selectedTaskIdx = findTaskIndex(t, m, "thread-visible-follow")
+	m.renderMode = renderModeThreaded
+	m.focusedPane = focusThreads
+	m.setSize(120, 12)
+	if err := m.refreshSelectedConversation(); err != nil {
+		t.Fatalf("refresh selected conversation: %v", err)
+	}
+	if !m.convoViewport.AtBottom() {
+		t.Fatalf("expected follow mode to place viewport at bottom")
+	}
+
+	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	m = next.(*tuiModel)
+	if m.autoFollow {
+		t.Fatalf("expected follow mode disabled after manual selection movement")
+	}
+	assertSelectedRowVisibleInThreadsViewport(t, m)
+}
+
+func TestTUIModelThreadSelectionScrollsViewportDownAsSelectionMoves(t *testing.T) {
+	root := t.TempDir()
+	s := initTaskStore(t, root, "thread-visible-scroll")
+	rootSeq := createThreadMessage(t, s, 0, "alice", "root")
+	for i := 0; i < 30; i++ {
+		_ = createThreadMessage(t, s, rootSeq, "bob", fmt.Sprintf("reply-%02d", i))
+	}
+
+	m := newTUIModelForBase(filepath.Join(root, store.CollabDir))
+	if err := m.refreshTasksFromDisk(); err != nil {
+		t.Fatalf("refresh tasks: %v", err)
+	}
+	m.selectedTaskIdx = findTaskIndex(t, m, "thread-visible-scroll")
+	m.renderMode = renderModeThreaded
+	m.focusedPane = focusThreads
+	m.setSize(120, 12)
+	m.autoFollow = false
+	if err := m.refreshSelectedConversation(); err != nil {
+		t.Fatalf("refresh selected conversation: %v", err)
+	}
+	m.convoViewport.SetYOffset(0)
+	startOffset := m.convoViewport.YOffset()
+
+	for i := 0; i < 12; i++ {
+		next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+		m = next.(*tuiModel)
+	}
+
+	if m.convoViewport.YOffset() <= startOffset {
+		t.Fatalf("expected viewport to scroll down as selection moved, start=%d now=%d", startOffset, m.convoViewport.YOffset())
+	}
+	assertSelectedRowVisibleInThreadsViewport(t, m)
+}
+
+func assertSelectedRowVisibleInThreadsViewport(t *testing.T, m *tuiModel) {
+	t.Helper()
+	if m.convoViewport.Height() <= 0 {
+		t.Fatalf("invalid test setup: viewport height must be positive")
+	}
+	line := m.selectedConversationLine()
+	top := m.convoViewport.YOffset()
+	bottom := top + m.convoViewport.Height() - 1
+	if line < top || line > bottom {
+		t.Fatalf("selected row line %d not visible in viewport [%d,%d]", line, top, bottom)
+	}
+}

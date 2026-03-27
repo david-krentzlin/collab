@@ -137,9 +137,13 @@ func TestTUIModelPeriodicRefreshStillRespectsFollowAfterMouseScroll(t *testing.T
 		t.Fatalf("expected not at bottom when autoFollow=false after wheel up")
 	}
 
-	for i := 0; i < 20 && !updated.convoViewport.AtBottom(); i++ {
+	for i := 0; i < 120 && !updated.convoViewport.AtBottom(); i++ {
+		prev := updated.convoViewport.YOffset()
 		next, _ = updated.Update(tea.MouseWheelMsg{X: conversationPaneX(updated), Y: updated.convoViewport.YPosition + 1, Button: tea.MouseWheelDown})
 		updated = next.(*tuiModel)
+		if updated.convoViewport.YOffset() == prev {
+			break
+		}
 	}
 	if !updated.convoViewport.AtBottom() {
 		t.Fatalf("expected to reach bottom after repeated wheel down")
