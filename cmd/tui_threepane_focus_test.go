@@ -138,7 +138,7 @@ func TestTUIModelUpDownOnThreadsChangesSelectedMessageAndDetails(t *testing.T) {
 	if m.selectedMessageSeq == startSeq {
 		t.Fatalf("expected selected message seq to change on down in threads focus")
 	}
-	if !strings.Contains(m.detailsViewport.GetContent(), "Summary reply") {
+	if !strings.Contains(m.detailsViewport.GetContent(), "Summary:") || !strings.Contains(m.detailsViewport.GetContent(), "reply") {
 		t.Fatalf("expected details pane to reflect newly selected thread row, got: %q", m.detailsViewport.GetContent())
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/david-krentzlin/collab/internal/message"
 	"github.com/david-krentzlin/collab/internal/store"
 )
 
@@ -91,10 +92,50 @@ func TestTUIModelDetailsPaneFormatsMetadataNicely(t *testing.T) {
 	}
 
 	details := m.detailsViewport.GetContent()
-	for _, want := range []string{"┌ Message #1", "From", "To", "Type", "Status", "Summary", "├ Body", "└ End"} {
+	for _, want := range []string{"Message #1", "From:", "To:", "Type:", "Status:", "Summary:", "Body"} {
 		if !strings.Contains(details, want) {
 			t.Fatalf("details metadata missing %q in: %q", want, details)
 		}
+	}
+}
+
+func TestTUIModelDetailsPaneReflowsSummaryAndBody(t *testing.T) {
+	root := t.TempDir()
+	s := initTaskStore(t, root, "details-reflow")
+	longSummary := "step 1 go from navigator with broad validation and a detailed note DETAIL_SUMMARY_WRAP_TAIL"
+	longBody := strings.Join([]string{
+		"Validation result from navigator review includes long prose that should wrap across multiple visual lines in the details pane for easier reading DETAIL_BODY_WRAP_TAIL.",
+		"",
+		"Assessment continues with another intentionally long sentence so wrapping behavior is exercised within bordered content without truncation.",
+	}, "\n")
+	if _, err := s.CreateMessage(&message.Message{
+		From:    "bob",
+		To:      "alice",
+		Type:    message.Review,
+		TS:      message.Now(),
+		Summary: longSummary,
+		Status:  message.Resolved,
+		Body:    longBody,
+	}); err != nil {
+		t.Fatalf("create long details message: %v", err)
+	}
+
+	m := newTUIModelForBase(filepath.Join(root, store.CollabDir))
+	if err := m.refreshTasksFromDisk(); err != nil {
+		t.Fatalf("refresh tasks: %v", err)
+	}
+	m.selectedTaskIdx = findTaskIndex(t, m, "details-reflow")
+	m.setSize(92, 14)
+	if err := m.refreshSelectedConversation(); err != nil {
+		t.Fatalf("refresh selected conversation: %v", err)
+	}
+
+	details := m.detailsViewport.GetContent()
+	if !strings.Contains(details, "DETAIL_SUMMARY_WRAP_TAIL") {
+		t.Fatalf("expected wrapped summary tail to remain visible, got: %q", details)
+	}
+	if !strings.Contains(details, "DETAIL_BODY_WRAP_TAIL") {
+		t.Fatalf("expected wrapped body tail to remain visible, got: %q", details)
 	}
 }
 

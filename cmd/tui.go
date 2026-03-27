@@ -14,6 +14,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/david-krentzlin/collab/internal/message"
 	"github.com/david-krentzlin/collab/internal/render"
 	"github.com/david-krentzlin/collab/internal/store"
@@ -1283,26 +1284,129 @@ func (m *tuiModel) refreshDetailsFromSelection() {
 		return
 	}
 
-	reLine := "-"
-	if msg.Re > 0 {
-		reLine = fmt.Sprintf("#%d", msg.Re)
-	}
-	body := strings.TrimRight(msg.Body, "\n")
-	if strings.TrimSpace(body) == "" {
-		body = "(empty body)"
+	m.detailsViewport.SetContent(m.renderMessageDetails(msg))
+	m.detailsViewport.GotoTop()
+}
+
+func (m *tuiModel) renderMessageDetails(msg *message.Message) string {
+	if msg == nil {
+		return "(no message selected)"
 	}
 
-	metaLine := fmt.Sprintf("From %s   To %s   Type %s   Re %s", m.agentLabel(msg.From), m.agentLabel(msg.To), msg.Type, reLine)
-	details := fmt.Sprintf("┌ Message #%d\n│ %s\n│ Status %s   Time %s\n│ Summary %s\n├ Body\n%s\n└ End",
-		msg.Seq,
-		metaLine,
-		msg.Status,
-		msg.TS,
-		msg.Summary,
-		indentLines(body, "│ "),
+	viewWidth := m.detailsViewport.Width()
+	if viewWidth <= 0 {
+		viewWidth = 72
+	}
+
+	cardWidth := max(viewWidth-2, 24)
+	innerWidth := max(cardWidth-2, 1)
+	gapWidth := 2
+	leftWidth := max(innerWidth/2-gapWidth/2, 12)
+	rightWidth := innerWidth - leftWidth - gapWidth
+	if rightWidth < 10 {
+		rightWidth = max(innerWidth/2, 10)
+		leftWidth = max(innerWidth-rightWidth-gapWidth, 1)
+	}
+
+	reLabel := "-"
+	if msg.Re > 0 {
+		reLabel = "#" + strconv.Itoa(msg.Re)
+	}
+
+	titleStyle := lipgloss.NewStyle().Width(innerWidth).Bold(true)
+	dividerStyle := lipgloss.NewStyle().Width(innerWidth)
+	metaCellStyle := lipgloss.NewStyle()
+	gapStyle := lipgloss.NewStyle().Width(gapWidth)
+	summaryStyle := lipgloss.NewStyle().Width(innerWidth)
+	bodyHeaderStyle := lipgloss.NewStyle().Width(innerWidth).Bold(true)
+	bodyStyle := lipgloss.NewStyle().Width(innerWidth).BorderStyle(lipgloss.NormalBorder()).Padding(0, 1)
+	cardStyle := lipgloss.NewStyle().Width(cardWidth).BorderStyle(lipgloss.NormalBorder())
+
+	if m.colorEnabled {
+		titleStyle = titleStyle.Foreground(lipgloss.Color("#E8EDF7"))
+		dividerStyle = dividerStyle.Foreground(lipgloss.Color("#3A4660"))
+		metaCellStyle = metaCellStyle.Foreground(lipgloss.Color("#C8D0DC"))
+		summaryStyle = summaryStyle.Foreground(lipgloss.Color("#DCE5F3")).Background(lipgloss.Color("#1E2634")).ColorWhitespace(true)
+		bodyHeaderStyle = bodyHeaderStyle.Foreground(lipgloss.Color("#D8E0EC"))
+		bodyStyle = bodyStyle.Foreground(lipgloss.Color("#D3DBE7")).Background(lipgloss.Color("#141B2A")).BorderForeground(lipgloss.Color("#3A4660")).ColorWhitespace(true)
+		cardStyle = cardStyle.Foreground(lipgloss.Color("#CED8E7")).Background(lipgloss.Color("#0E1320")).BorderForeground(lipgloss.Color("#3A4660")).ColorWhitespace(true)
+	}
+
+	leftTop := "From: " + msg.From
+	rightTop := "Type: " + string(msg.Type) + "   Re: " + reLabel
+	leftBottom := "To: " + msg.To
+	rightBottom := "Status: " + detailsStatusLabel(msg.Status) + "   Time: " + detailsTimeLabel(msg.TS)
+
+	metaRow := func(left, right string) string {
+		leftCell := metaCellStyle.Copy().Width(leftWidth).Render(fitCellContent(left, leftWidth))
+		rightCell := metaCellStyle.Copy().Width(rightWidth).Render(fitCellContent(right, rightWidth))
+		return lipgloss.JoinHorizontal(lipgloss.Top, leftCell, gapStyle.Render("  "), rightCell)
+	}
+
+	summaryLine := summaryStyle.Render(reflowText("Summary: "+msg.Summary, innerWidth))
+
+	bodyText := strings.TrimRight(msg.Body, "\n")
+	if strings.TrimSpace(bodyText) == "" {
+		bodyText = "(empty body)"
+	}
+	bodyTextWidth := max(innerWidth-4, 1)
+	bodyBlock := bodyStyle.Render(reflowText(bodyText, bodyTextWidth))
+
+	details := lipgloss.JoinVertical(
+		lipgloss.Left,
+		titleStyle.Render("Message #"+strconv.Itoa(msg.Seq)),
+		dividerStyle.Render(strings.Repeat("─", innerWidth)),
+		metaRow(leftTop, rightTop),
+		metaRow(leftBottom, rightBottom),
+		summaryLine,
+		dividerStyle.Render(strings.Repeat("─", innerWidth)),
+		bodyHeaderStyle.Render("Body"),
+		bodyBlock,
 	)
-	m.detailsViewport.SetContent(details)
-	m.detailsViewport.GotoTop()
+
+	return cardStyle.Render(details)
+}
+
+func detailsTimeLabel(ts string) string {
+	if ts == "" {
+		return "-"
+	}
+	parsed, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return ts
+	}
+	return parsed.Format("2006-01-02 15:04")
+}
+
+func detailsStatusLabel(status message.Status) string {
+	s := string(status)
+	if s == "" {
+		return "-"
+	}
+	if len(s) == 1 {
+		return strings.ToUpper(s)
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+func reflowText(text string, width int) string {
+	if width <= 0 {
+		return text
+	}
+
+	normalized := strings.ReplaceAll(text, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	wrapped := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			wrapped = append(wrapped, "")
+			continue
+		}
+		chunk := ansi.Wordwrap(line, width, " ")
+		wrapped = append(wrapped, strings.Split(chunk, "\n")...)
+	}
+
+	return strings.Join(wrapped, "\n")
 }
 
 func (m *tuiModel) moveConversationSelection(delta int) {
