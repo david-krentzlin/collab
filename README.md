@@ -89,29 +89,29 @@ Additional helper targets:
 # Initialize
 collab init --agents agent-a,agent-b
 
-# Send (body via stdin, sender from env)
-export COLLAB_AGENT=agent-a
-export COLLAB_TASK=auth-middleware   # optional; defaults to "default"
+# Send (body via stdin, sender/task passed explicitly)
 echo "Should we split this into two packages?" | \
-  collab send --to agent-b --type inquiry --summary "package structure question"
+  collab send --agent agent-a --task auth-middleware --to agent-b --type inquiry --summary "package structure question"
 
 # Poll for new messages (summaries only)
-export COLLAB_AGENT=agent-b
-collab check
+collab check --agent agent-b --task auth-middleware
 # output: #1 [inquiry] from:agent-a "package structure question"
 
-collab check --since 1
+collab check --agent agent-b --task auth-middleware --since 1
 # output: No new messages since #1
 
 # Read full message
-collab read 1
+collab read 1 --agent agent-b --task auth-middleware
 
 # Reply
 echo "Yes, I think cmd/ and internal/ is the right split." | \
-  collab send --to agent-a --type reply --re 1 --summary "agree on package split"
+  collab send --agent agent-b --task auth-middleware --to agent-a --type reply --re 1 --summary "agree on package split"
 
 # Mark as resolved
-collab resolve 1
+collab resolve 1 --agent agent-a --task auth-middleware
+
+# Validate setup for one agent/task context
+collab doctor --agent agent-a --task auth-middleware
 ```
 
 ## Token Efficiency Design
@@ -122,14 +122,3 @@ collab resolve 1
 4. `check` and `read` use the metadata index to avoid directory rescans
 5. Messages live in per-agent directories — no shared mutable state
 
-## OpenCode Integration
-
-See [TOOLS.md](./TOOLS.md) for tool definitions and system prompt additions.
-
-## Future: Conversation Renderer
-
-The structured format makes rendering straightforward:
-- Glob `**/*.md`, sort by seq
-- Build thread trees from `re` references
-- Render as HTML/terminal with thread indentation
-- Filter by status, agent, type
