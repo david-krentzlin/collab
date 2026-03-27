@@ -110,7 +110,7 @@ func TestTUIModelThreadsPaneShowsThreadedSummaryRows(t *testing.T) {
 	}
 
 	content := m.convoViewport.GetContent()
-	if !strings.Contains(content, "┌ "+iconExpand+" "+iconThread+" #1") || !strings.Contains(content, "│ "+iconMessage+" "+iconOpen+" bob") {
+	if !strings.Contains(content, iconThread+" #1") || !strings.Contains(content, iconOpen) || !strings.Contains(content, "bob") {
 		t.Fatalf("expected threaded summary rows in middle pane content, got: %q", content)
 	}
 }

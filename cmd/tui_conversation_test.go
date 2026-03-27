@@ -215,7 +215,7 @@ func TestTUIModelRefreshSelectedConversationHandlesCorruptMessageFileGracefully(
 		t.Fatalf("refresh tasks: %v", err)
 	}
 	m.selectedTaskIdx = findTaskIndex(t, m, "task-a")
-	m.setSize(80, 8)
+	m.setSize(140, 8)
 
 	if err := m.refreshSelectedConversation(); err != nil {
 		t.Fatalf("refresh selected conversation with corrupt message: %v", err)

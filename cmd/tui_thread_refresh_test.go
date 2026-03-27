@@ -33,10 +33,10 @@ func TestTUIModelThreadedFormattingShowsParentChildStructure(t *testing.T) {
 	if !strings.Contains(content, iconThread+" #1") || !strings.Contains(content, "root") {
 		t.Fatalf("missing root line: %q", content)
 	}
-	if !strings.Contains(content, "│ "+iconMessage+" "+iconOpen+" bob") || !strings.Contains(content, "child-a") {
+	if !strings.Contains(content, iconOpen) || !strings.Contains(content, "bob") || !strings.Contains(content, "child-a") {
 		t.Fatalf("missing child-a row: %q", content)
 	}
-	if !strings.Contains(content, "│ "+iconMessage+" "+iconOpen+" carol") || !strings.Contains(content, "child-b") {
+	if !strings.Contains(content, iconOpen) || !strings.Contains(content, "carol") || !strings.Contains(content, "child-b") {
 		t.Fatalf("missing child-b row: %q", content)
 	}
 }
@@ -61,10 +61,10 @@ func TestTUIModelThreadedFormattingShowsNestedReplyDepth(t *testing.T) {
 	}
 
 	content := m.convoViewport.GetContent()
-	if !strings.Contains(content, "│ "+iconMessage+" "+iconOpen+" bob") || !strings.Contains(content, "level-1") {
+	if !strings.Contains(content, iconOpen) || !strings.Contains(content, "bob") || !strings.Contains(content, "level-1") {
 		t.Fatalf("missing level-1 row: %q", content)
 	}
-	if !strings.Contains(content, "│ "+iconMessage+" "+iconOpen+" carol") || !strings.Contains(content, "level-2") {
+	if !strings.Contains(content, iconOpen) || !strings.Contains(content, "carol") || !strings.Contains(content, "level-2") {
 		t.Fatalf("missing level-2 row: %q", content)
 	}
 }
@@ -171,7 +171,7 @@ func TestTUIModelPeriodicRefreshUpdatesSelectedConversationContent(t *testing.T)
 		t.Fatalf("refresh tasks: %v", err)
 	}
 	m.selectedTaskIdx = findTaskIndex(t, m, "a-task")
-	m.setSize(80, 8)
+	m.setSize(140, 8)
 
 	if _, err := aStore.CreateMessage(&message.Message{
 		From:    "alice",

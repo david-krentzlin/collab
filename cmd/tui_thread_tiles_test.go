@@ -26,13 +26,16 @@ func TestTUIModelThreadTilesRenderBoxAndChildren(t *testing.T) {
 	}
 
 	content := m.convoViewport.GetContent()
-	if !strings.Contains(content, "┌ "+iconExpand+" "+iconThread+" #1") {
+	if !strings.Contains(content, "  ┌") {
+		t.Fatalf("expected thread tile with horizontal margin, got: %q", content)
+	}
+	if !strings.Contains(content, iconThread+" #1") {
 		t.Fatalf("expected thread tile header, got: %q", content)
 	}
-	if !strings.Contains(content, "│ "+iconMessage+" "+iconOpen+" bob") {
+	if !strings.Contains(content, iconOpen) || !strings.Contains(content, "bob") {
 		t.Fatalf("expected child message under tile, got: %q", content)
 	}
-	if !strings.Contains(content, "└") {
+	if !strings.Contains(content, "└") || !strings.Contains(content, "┐") {
 		t.Fatalf("expected tile bottom marker, got: %q", content)
 	}
 }
@@ -112,14 +115,23 @@ func TestTUIModelThreadTileHeaderShowsSummaryAndFollowUpCount(t *testing.T) {
 		t.Fatalf("refresh selected conversation: %v", err)
 	}
 
-	line := strings.Split(m.convoViewport.GetContent(), "\n")[0]
+	line := ""
+	for _, candidate := range strings.Split(m.convoViewport.GetContent(), "\n") {
+		if strings.Contains(candidate, iconThread+" #1") {
+			line = candidate
+			break
+		}
+	}
+	if line == "" {
+		t.Fatalf("missing visible thread header line in content: %q", m.convoViewport.GetContent())
+	}
 	if !strings.Contains(line, iconThread+" #1") {
 		t.Fatalf("header missing thread number: %q", line)
 	}
 	if !strings.Contains(line, "root summary") {
 		t.Fatalf("header missing summary: %q", line)
 	}
-	if !strings.Contains(line, "2 follow-ups") {
+	if !strings.Contains(line, "2 replies") {
 		t.Fatalf("header missing follow-up count: %q", line)
 	}
 }
@@ -141,14 +153,14 @@ func TestTUIModelThreadMessageRowsShowAgentSummaryTimeAndStatus(t *testing.T) {
 	}
 
 	content := m.convoViewport.GetContent()
-	if !strings.Contains(content, "│ "+iconMessage+" "+iconOpen+" bob") {
+	if !strings.Contains(content, iconOpen) || !strings.Contains(content, "bob") {
 		t.Fatalf("message row missing agent and status icon: %q", content)
+	}
+	if !strings.Contains(content, "│") {
+		t.Fatalf("message row should be rendered as a bordered cell line: %q", content)
 	}
 	if !strings.Contains(content, "child summary") {
 		t.Fatalf("message row missing summary: %q", content)
-	}
-	if !strings.Contains(content, "·") {
-		t.Fatalf("message row missing time separator: %q", content)
 	}
 }
 
@@ -174,7 +186,7 @@ func TestTUIModelSelectingMessageMarksReferencedMessage(t *testing.T) {
 	next, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = next.(*tuiModel)
 	content := m.convoViewport.GetContent()
-	if !strings.Contains(content, iconReference+" ┌") {
+	if !strings.Contains(content, iconReference) || !strings.Contains(content, iconThread+" #1") {
 		t.Fatalf("expected referenced root message marker in content: %q", content)
 	}
 }
@@ -211,25 +223,38 @@ func TestTUIModelThreadTilesHaveBlankMarginBetweenThreads(t *testing.T) {
 	}
 
 	content := m.convoViewport.GetContent()
-	if !strings.Contains(content, "└\n\n\n┌") {
+	firstBottom := strings.Index(content, "└")
+	secondTop := strings.LastIndex(content, "┌")
+	if firstBottom < 0 || secondTop <= firstBottom {
+		t.Fatalf("expected two thread tiles in content, got: %q", content)
+	}
+	between := content[firstBottom:secondTop]
+	if strings.Count(between, "\n") < 2 {
 		t.Fatalf("expected visible blank margin between thread tiles, got: %q", content)
 	}
 }
 
-func TestTUIModelThreadRowStylingUsesMutedBackgroundAndHeaderAccent(t *testing.T) {
-	m := newTUIModelForBase(filepath.Join(t.TempDir(), store.CollabDir))
-	m.colorEnabled = true
+func TestTUIModelSelectedThreadUsesStrongLeftBorder(t *testing.T) {
+	root := t.TempDir()
+	s := initTaskStore(t, root, "selected-border")
+	_ = createThreadMessage(t, s, 0, "alice", "root-1")
+	_ = createThreadMessage(t, s, 0, "bob", "root-2")
 
-	msgRow := m.styleThreadCell("row", conversationRow{rootSeq: 1, kind: "message"}, false, false)
-	headerRow := m.styleThreadCell("header", conversationRow{rootSeq: 1, kind: "thread-header"}, false, false)
+	m := newTUIModelForBase(filepath.Join(root, store.CollabDir))
+	if err := m.refreshTasksFromDisk(); err != nil {
+		t.Fatalf("refresh tasks: %v", err)
+	}
+	m.selectedTaskIdx = findTaskIndex(t, m, "selected-border")
+	m.renderMode = renderModeThreaded
+	if err := m.refreshSelectedConversation(); err != nil {
+		t.Fatalf("refresh selected conversation: %v", err)
+	}
 
-	if !strings.Contains(msgRow, "48;2;42;45;56") {
-		t.Fatalf("expected muted dark background in message row style, got %q", msgRow)
+	content := m.convoViewport.GetContent()
+	if !strings.Contains(content, "┃") {
+		t.Fatalf("expected selected thread to use highlighted left border glyph, got: %q", content)
 	}
-	if !strings.Contains(headerRow, "48;2;42;45;56") {
-		t.Fatalf("expected muted dark background in header row style, got %q", headerRow)
-	}
-	if msgRow == headerRow {
-		t.Fatalf("expected header style to differ from message style")
+	if !strings.Contains(content, "│") {
+		t.Fatalf("expected non-selected rows to keep standard border glyph, got: %q", content)
 	}
 }

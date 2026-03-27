@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,7 +30,6 @@ const (
 	iconThread    = "󰘬"
 	iconExpand    = ""
 	iconCollapse  = ""
-	iconMessage   = "󰍩"
 	iconOpen      = ""
 	iconResolved  = ""
 	iconReference = "󰌷"
@@ -56,6 +56,7 @@ type conversationRow struct {
 	text       string
 	seq        int
 	rootSeq    int
+	followUps  int
 	selectable bool
 	kind       string
 }
@@ -301,12 +302,7 @@ func (m *tuiModel) View() tea.View {
 		}
 		tasksRendered := bodyStyleTasks.Render(taskCell)
 
-		threadCell := fitCellContent(threadContent, threadsWidth)
-		if row < len(m.conversationRows) {
-			rowMeta := m.conversationRows[row]
-			isRef := m.selectedMessageReferenceSeq() > 0 && rowMeta.seq == m.selectedMessageReferenceSeq()
-			threadCell = m.styleThreadCell(threadCell, rowMeta, row == m.selectedRowIdx, isRef)
-		}
+		threadCell := threadContent
 		threadsRendered := bodyStyleThreads.Render(threadCell)
 
 		detailsRendered := bodyStyleDetails.Render(fitCellContent(detailContent, detailsWidth))
@@ -538,8 +534,14 @@ func (m *tuiModel) buildThreadedRows(msgs []*message.Message) []conversationRow 
 		if followUps < 0 {
 			followUps = 0
 		}
-		header := m.formatThreadHeader(root, followUps, collapsed)
-		rows = append(rows, conversationRow{text: header, seq: rootSeq, rootSeq: rootSeq, selectable: true, kind: "thread-header"})
+		rows = append(rows, conversationRow{
+			text:       root.Summary,
+			seq:        rootSeq,
+			rootSeq:    rootSeq,
+			followUps:  followUps,
+			selectable: true,
+			kind:       "thread-header",
+		})
 
 		if !collapsed {
 			sort.Slice(flattened, func(i, j int) bool {
@@ -550,7 +552,7 @@ func (m *tuiModel) buildThreadedRows(msgs []*message.Message) []conversationRow 
 					continue
 				}
 				rows = append(rows, conversationRow{
-					text:       m.formatThreadMessageRow(msg),
+					text:       msg.Summary,
 					seq:        msg.Seq,
 					rootSeq:    rootSeq,
 					selectable: true,
@@ -558,10 +560,6 @@ func (m *tuiModel) buildThreadedRows(msgs []*message.Message) []conversationRow 
 				})
 			}
 		}
-
-		rows = append(rows, conversationRow{text: "└", seq: 0, rootSeq: rootSeq, selectable: false, kind: "thread-bottom"})
-		rows = append(rows, conversationRow{text: "", seq: 0, rootSeq: 0, selectable: false, kind: "spacer"})
-		rows = append(rows, conversationRow{text: "", seq: 0, rootSeq: 0, selectable: false, kind: "spacer"})
 	}
 
 	if len(orphans) > 0 {
@@ -571,7 +569,7 @@ func (m *tuiModel) buildThreadedRows(msgs []*message.Message) []conversationRow 
 				continue
 			}
 			rows = append(rows, conversationRow{
-				text:       "  ? " + m.formatThreadMessage(orphan.Message),
+				text:       orphan.Message.Summary,
 				seq:        orphan.Message.Seq,
 				rootSeq:    orphan.Message.Seq,
 				selectable: true,
@@ -580,33 +578,7 @@ func (m *tuiModel) buildThreadedRows(msgs []*message.Message) []conversationRow 
 		}
 	}
 
-	for len(rows) > 0 && rows[len(rows)-1].kind == "spacer" {
-		rows = rows[:len(rows)-1]
-	}
-
 	return rows
-}
-
-func (m *tuiModel) formatThreadHeader(root *message.Message, followUps int, collapsed bool) string {
-	marker := iconExpand
-	if collapsed {
-		marker = iconCollapse
-	}
-	plural := "follow-up"
-	if followUps != 1 {
-		plural = "follow-ups"
-	}
-	return fmt.Sprintf("┌ %s %s #%d  %s  ·  %d %s", marker, iconThread, root.Seq, root.Summary, followUps, plural)
-}
-
-func (m *tuiModel) formatThreadMessage(msg *message.Message) string {
-	return fmt.Sprintf("#%d %s [%s] %s", msg.Seq, m.agentLabel(msg.From), msg.Type, msg.Summary)
-}
-
-func (m *tuiModel) formatThreadMessageRow(msg *message.Message) string {
-	icon := statusIcon(msg.Status)
-	timeLabel := shortTime(msg.TS)
-	return fmt.Sprintf("│ %s %s %-10s %s  ·  %s", iconMessage, icon, msg.From, msg.Summary, timeLabel)
 }
 
 func statusIcon(status message.Status) string {
@@ -658,17 +630,20 @@ func (m *tuiModel) resetConversationStats() {
 
 var threadAgentPalette = []string{"#89B4FA", "#F38BA8", "#A6E3A1", "#FAB387", "#CBA6F7", "#74C7EC"}
 
+func (m *tuiModel) agentColor(name string) string {
+	sum := 0
+	for _, r := range name {
+		sum += int(r)
+	}
+	return threadAgentPalette[sum%len(threadAgentPalette)]
+}
+
 func (m *tuiModel) agentLabel(name string) string {
 	if !m.colorEnabled || strings.TrimSpace(name) == "" {
 		return name
 	}
 
-	sum := 0
-	for _, r := range name {
-		sum += int(r)
-	}
-	color := threadAgentPalette[sum%len(threadAgentPalette)]
-	return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(color)).Render(name)
+	return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.agentColor(name))).Render(name)
 }
 
 func (m *tuiModel) paneHeaderLabel(title string, pane viewerPaneFocus) string {
@@ -784,48 +759,307 @@ func (m *tuiModel) selectedMessageReferenceSeq() int {
 	return msg.Re
 }
 
-func (m *tuiModel) styleThreadCell(content string, row conversationRow, selected bool, referenced bool) string {
-	if !m.colorEnabled {
-		return content
-	}
-
-	style := lipgloss.NewStyle()
-	if row.rootSeq > 0 {
-		style = style.Background(lipgloss.Color("#2A2D38")).Foreground(lipgloss.Color("#CDD6F4"))
-	}
-	if row.kind == "thread-header" {
-		style = style.Bold(true).Foreground(lipgloss.Color("#89B4FA"))
-	}
-	if referenced {
-		style = style.Foreground(lipgloss.Color("#F9E2AF"))
-	}
-	if selected {
-		style = style.Bold(true).Foreground(lipgloss.Color("#A6E3A1")).Background(lipgloss.Color("#3A3D46"))
-	}
-
-	return style.Render(content)
-}
-
-func (m *tuiModel) conversationRowsText() string {
+func (m *tuiModel) conversationRowsText(width int) string {
 	if len(m.conversationRows) == 0 {
 		return "(no messages)"
 	}
+	if width <= 0 {
+		width = 120
+	}
 
+	if m.renderMode == renderModeThreaded {
+		return m.threadedRowsText(width)
+	}
+	return m.timelineRowsText(width)
+}
+
+func (m *tuiModel) timelineRowsText(width int) string {
 	refSeq := m.selectedMessageReferenceSeq()
 	lines := make([]string, 0, len(m.conversationRows))
-	for _, row := range m.conversationRows {
-		line := row.text
-		if refSeq > 0 && row.seq == refSeq {
-			line = iconReference + " " + line
-		}
-		lines = append(lines, line)
+	baseStyle := lipgloss.NewStyle().Width(width).MaxWidth(width)
+	selectedStyle := baseStyle.Copy()
+	if m.colorEnabled {
+		baseStyle = baseStyle.Foreground(lipgloss.Color("#C8D0DC"))
+		selectedStyle = selectedStyle.Bold(true).Foreground(lipgloss.Color("#E8EDF7")).Background(lipgloss.Color("#344157")).ColorWhitespace(true)
 	}
+
+	for i, row := range m.conversationRows {
+		line := fitCellContent(row.text, width)
+		if refSeq > 0 && row.seq == refSeq {
+			line = fitCellContent(iconReference+" "+line, width)
+		}
+		if i == m.selectedRowIdx {
+			lines = append(lines, selectedStyle.Render(line))
+			continue
+		}
+		lines = append(lines, baseStyle.Render(line))
+	}
+
 	return strings.Join(lines, "\n")
+}
+
+func (m *tuiModel) threadedRowsText(width int) string {
+	refSeq := m.selectedMessageReferenceSeq()
+	blocks := make([]string, 0, len(m.conversationRows)+4)
+
+	for i := 0; i < len(m.conversationRows); {
+		row := m.conversationRows[i]
+		switch row.kind {
+		case "thread-header":
+			children := make([]conversationRow, 0, 4)
+			childIndexes := make([]int, 0, 4)
+			j := i + 1
+			for j < len(m.conversationRows) && m.conversationRows[j].rootSeq == row.rootSeq && m.conversationRows[j].kind == "message" {
+				children = append(children, m.conversationRows[j])
+				childIndexes = append(childIndexes, j)
+				j++
+			}
+			blocks = append(blocks, m.renderThreadTile(row, i, children, childIndexes, width, refSeq))
+			i = j
+			continue
+		case "orphans-header":
+			headerStyle := lipgloss.NewStyle().Width(width).MaxWidth(width).MarginTop(1).Bold(true)
+			if m.colorEnabled {
+				headerStyle = headerStyle.Foreground(lipgloss.Color("#A8B5C9"))
+			}
+			blocks = append(blocks, headerStyle.Render("Orphans:"))
+			i++
+		case "orphan":
+			line := "? #" + strconv.Itoa(row.seq) + " " + row.text
+			if msg := m.messageBySeq[row.seq]; msg != nil {
+				line = "? #" + strconv.Itoa(row.seq) + " " + msg.From + " [" + string(msg.Type) + "] " + msg.Summary
+			}
+			line = fitCellContent(line, width)
+			style := lipgloss.NewStyle().Width(width).MaxWidth(width)
+			if m.colorEnabled {
+				style = style.Foreground(lipgloss.Color("#C8D0DC"))
+			}
+			if i == m.selectedRowIdx {
+				if m.colorEnabled {
+					style = style.Bold(true).Foreground(lipgloss.Color("#E8EDF7")).Background(lipgloss.Color("#344157")).ColorWhitespace(true)
+				}
+			}
+			blocks = append(blocks, style.Render(line))
+			i++
+		default:
+			line := row.text
+			if refSeq > 0 && row.seq == refSeq {
+				line = iconReference + " " + line
+			}
+			blocks = append(blocks, lipgloss.NewStyle().Width(width).MaxWidth(width).Render(fitCellContent(line, width)))
+			i++
+		}
+	}
+
+	return strings.Join(blocks, "\n\n")
+}
+
+func (m *tuiModel) renderThreadTile(header conversationRow, headerIdx int, children []conversationRow, childIndexes []int, width, refSeq int) string {
+	marginX := 2
+	marginY := 0
+	paddingX := 1
+	chrome := marginX*2 + paddingX*2 + 2
+	contentWidth := width - chrome - 4
+	if contentWidth < 16 {
+		paddingX = 0
+		chrome = marginX*2 + 2
+		contentWidth = width - chrome - 3
+	}
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+
+	headerMsg := m.messageBySeq[header.seq]
+	headerReferenced := refSeq > 0 && header.seq == refSeq
+	headerSelected := headerIdx == m.selectedRowIdx
+
+	bodyLines := []string{m.renderThreadHeaderLine(header, headerMsg, contentWidth, headerReferenced, headerSelected)}
+	for i, row := range children {
+		msg := m.messageBySeq[row.seq]
+		selected := childIndexes[i] == m.selectedRowIdx
+		referenced := refSeq > 0 && row.seq == refSeq
+		bodyLines = append(bodyLines, m.renderThreadMessageLine(msg, contentWidth, selected, referenced))
+	}
+	body := lipgloss.JoinVertical(lipgloss.Left, bodyLines...)
+
+	border := lipgloss.NormalBorder()
+	selectedThread := header.rootSeq > 0 && header.rootSeq == m.selectedThreadRoot
+	if selectedThread {
+		border.Left = "┃"
+	}
+
+	style := lipgloss.NewStyle().Width(contentWidth).MaxWidth(contentWidth).Padding(0, paddingX).BorderStyle(border)
+	if m.colorEnabled {
+		style = style.Foreground(lipgloss.Color("#D3DBE7")).Background(lipgloss.Color("#262F3F")).ColorWhitespace(true)
+		if selectedThread {
+			style = style.BorderForeground(lipgloss.Color("#5FA8FF"))
+		} else {
+			style = style.BorderForeground(lipgloss.Color("#596273"))
+		}
+	}
+
+	cell := style.Render(body)
+	return lipgloss.NewStyle().Margin(marginY, marginX).Render(cell)
+}
+
+func (m *tuiModel) renderThreadHeaderLine(row conversationRow, root *message.Message, width int, referenced bool, selected bool) string {
+	marker := iconExpand
+	if m.collapsedThreads[row.rootSeq] {
+		marker = iconCollapse
+	}
+
+	seq := row.seq
+	summary := row.text
+	ts := ""
+	if root != nil {
+		seq = root.Seq
+		summary = root.Summary
+		ts = root.TS
+	}
+
+	plural := "reply"
+	if row.followUps != 1 {
+		plural = "replies"
+	}
+	prefix := marker + " " + iconThread + " #" + strconv.Itoa(seq) + " "
+	if width < 24 {
+		prefix = "#" + strconv.Itoa(seq) + " "
+	}
+	left := prefix + summary
+	if referenced {
+		left = iconReference + " " + left
+	}
+	metaDate := shortDate(ts)
+	right := strconv.Itoa(row.followUps) + " " + plural
+	if metaDate != "" && width >= 24 {
+		right += "  " + metaDate
+	}
+
+	usableWidth := max(width-4, 1)
+	rightWidth := min(max(usableWidth/4, 12), max(usableWidth/2, 1))
+	if usableWidth < 28 {
+		rightWidth = min(max(usableWidth/3, 8), max(usableWidth/2, 1))
+	}
+	leftWidth := max(usableWidth-rightWidth, 1)
+	rightWidth = max(usableWidth-leftWidth, 0)
+
+	leftStyle := lipgloss.NewStyle().Width(leftWidth)
+	rightStyle := lipgloss.NewStyle().Width(rightWidth).Align(lipgloss.Right)
+	if m.colorEnabled {
+		rightStyle = rightStyle.Foreground(lipgloss.Color("#B7C5D8"))
+	}
+
+	leftCell := leftStyle.Render(fitCellContent(left, leftWidth))
+	line := leftCell
+	if rightWidth > 0 {
+		rightCell := rightStyle.Render(fitCellContent(right, rightWidth))
+		line = lipgloss.JoinHorizontal(lipgloss.Top, leftCell, rightCell)
+	}
+	line = lipgloss.NewStyle().Width(width).MaxWidth(width).Render(line)
+
+	style := lipgloss.NewStyle()
+	if m.colorEnabled {
+		style = style.Bold(true).Foreground(lipgloss.Color("#EAF1FF")).Background(lipgloss.Color("#334257")).ColorWhitespace(true)
+		if selected {
+			style = style.Background(lipgloss.Color("#40618E"))
+		}
+		if referenced {
+			style = style.Foreground(lipgloss.Color("#FDE68A"))
+		}
+	}
+
+	return style.Render(line)
+}
+
+func (m *tuiModel) renderThreadMessageLine(msg *message.Message, width int, selected bool, referenced bool) string {
+	if msg == nil {
+		return lipgloss.NewStyle().Width(width).MaxWidth(width).Render("")
+	}
+	usableWidth := max(width-4, 1)
+	metaWidth := min(max(usableWidth/4, 14), max(usableWidth/2, 1))
+	if usableWidth < 48 {
+		metaWidth = min(max(usableWidth/3, 12), max(usableWidth/2, 1))
+	}
+	summaryWidth := max(usableWidth-metaWidth, 1)
+
+	metaBG := ""
+	summaryBG := ""
+	metaFG := ""
+	timeFG := ""
+	summaryFG := ""
+	if m.colorEnabled {
+		metaBG = "#202A39"
+		summaryBG = "#262F3F"
+		metaFG = "#C9D1DD"
+		timeFG = "#94A2B8"
+		summaryFG = "#D8E0EC"
+		if selected {
+			metaBG = "#3C506E"
+			summaryBG = "#425874"
+			timeFG = "#C8D4E4"
+		}
+	}
+
+	statusWidth := 2
+	timeWidth := 5
+	agentWidth := max(metaWidth-statusWidth-timeWidth-2, 1)
+
+	metaFieldStyle := lipgloss.NewStyle()
+	if m.colorEnabled {
+		metaFieldStyle = metaFieldStyle.Background(lipgloss.Color(metaBG)).Foreground(lipgloss.Color(metaFG)).ColorWhitespace(true)
+	}
+
+	statusCell := metaFieldStyle.Copy().Width(statusWidth).MaxWidth(statusWidth).Render(fitCellContent(statusIcon(msg.Status), statusWidth))
+	timeCellStyle := metaFieldStyle.Copy().Width(timeWidth).MaxWidth(timeWidth)
+	if m.colorEnabled {
+		timeCellStyle = timeCellStyle.Foreground(lipgloss.Color(timeFG))
+	}
+	timeCell := timeCellStyle.Render(fitCellContent(shortTime(msg.TS), timeWidth))
+
+	agentCellStyle := metaFieldStyle.Copy().Width(agentWidth).MaxWidth(agentWidth)
+	if m.colorEnabled && !selected && !referenced {
+		agentCellStyle = agentCellStyle.Foreground(lipgloss.Color(m.agentColor(msg.From))).Bold(true)
+	}
+	agentCell := agentCellStyle.Render(fitCellContent(msg.From, agentWidth))
+
+	gap := metaFieldStyle.Copy().Width(1).MaxWidth(1).Render(" ")
+	metaContent := lipgloss.JoinHorizontal(lipgloss.Top, statusCell, gap, timeCell, gap, agentCell)
+	metaCell := metaFieldStyle.Copy().Width(metaWidth).MaxWidth(metaWidth).Render(metaContent)
+
+	summaryText := msg.Summary
+	if referenced {
+		summaryText = iconReference + " " + summaryText
+	}
+	summaryStyle := lipgloss.NewStyle().Width(summaryWidth).MaxWidth(summaryWidth)
+	if m.colorEnabled {
+		summaryStyle = summaryStyle.Background(lipgloss.Color(summaryBG)).Foreground(lipgloss.Color(summaryFG)).ColorWhitespace(true)
+	}
+	if referenced {
+		summaryStyle = summaryStyle.Foreground(lipgloss.Color("#FDE68A")).Bold(true)
+	}
+	summaryCell := summaryStyle.Render(fitCellContent(summaryText, summaryWidth))
+
+	line := lipgloss.JoinHorizontal(lipgloss.Top, metaCell, summaryCell)
+	if !m.colorEnabled && selected {
+		return lipgloss.NewStyle().Bold(true).Width(width).MaxWidth(width).Render(line)
+	}
+	return lipgloss.NewStyle().Width(width).MaxWidth(width).Render(line)
+}
+
+func shortDate(ts string) string {
+	if ts == "" {
+		return ""
+	}
+	parsed, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return ""
+	}
+	return parsed.Format("2006/01/02")
 }
 
 func (m *tuiModel) refreshConversationViewportContent() {
 	offset := m.convoViewport.YOffset()
-	m.convoViewport.SetContent(m.conversationRowsText())
+	m.convoViewport.SetContent(m.conversationRowsText(m.convoViewport.Width()))
 	if m.autoFollow {
 		m.convoViewport.GotoBottom()
 		return
@@ -1071,13 +1305,26 @@ func fitCellContent(content string, width int) string {
 	if lipgloss.Width(clean) <= width {
 		return clean
 	}
-
-	runes := []rune(clean)
 	if width == 1 {
 		return "…"
 	}
 
-	return string(runes[:width-1]) + "…"
+	maxContentWidth := width - 1
+	var b strings.Builder
+	renderedWidth := 0
+	for _, r := range clean {
+		rw := lipgloss.Width(string(r))
+		if rw <= 0 {
+			rw = 1
+		}
+		if renderedWidth+rw > maxContentWidth {
+			break
+		}
+		b.WriteRune(r)
+		renderedWidth += rw
+	}
+
+	return b.String() + "…"
 }
 
 func indentLines(content, prefix string) string {
