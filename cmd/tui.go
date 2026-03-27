@@ -287,7 +287,7 @@ func (m *tuiModel) View() tea.View {
 	bodyStyleThreads := lipgloss.NewStyle().Width(threadsWidth).MaxWidth(threadsWidth)
 	bodyStyleDetails := lipgloss.NewStyle().Width(detailsWidth).MaxWidth(detailsWidth)
 	if m.colorEnabled {
-		bodyStyleTasks = bodyStyleTasks.Background(lipgloss.Color("#0D1322")).ColorWhitespace(true)
+		bodyStyleTasks = bodyStyleTasks.Background(lipgloss.Color("#000000")).ColorWhitespace(true)
 	}
 
 	topFrame := "┌" + strings.Repeat("─", tasksWidth) + "┬" + strings.Repeat("─", threadsWidth) + "┬" + strings.Repeat("─", detailsWidth) + "┐"
@@ -471,16 +471,18 @@ func (m *tuiModel) renderTaskPaneRow(i, width int) string {
 	leftStyle := lipgloss.NewStyle().Width(leftWidth).MaxWidth(leftWidth)
 	countStyle := lipgloss.NewStyle().Width(countWidth).Align(lipgloss.Right)
 	if m.colorEnabled {
-		rowStyle = rowStyle.Background(lipgloss.Color("#0D1322")).Foreground(lipgloss.Color("#C7D2E4")).ColorWhitespace(true)
-		leftStyle = leftStyle.Foreground(lipgloss.Color("#C7D2E4"))
-		countStyle = countStyle.Foreground(lipgloss.Color("#9AA8C0"))
+		rowBG := lipgloss.Color("#000000")
+		rowStyle = rowStyle.Background(rowBG).Foreground(lipgloss.Color("#C7D2E4")).ColorWhitespace(true)
+		leftStyle = leftStyle.Foreground(lipgloss.Color("#C7D2E4")).Background(rowBG).ColorWhitespace(true)
+		countStyle = countStyle.Foreground(lipgloss.Color("#9AA8C0")).Background(rowBG).ColorWhitespace(true)
 		if task.hasUnread {
 			leftStyle = leftStyle.Foreground(lipgloss.Color("#E1E9F7")).Bold(true)
 		}
 		if selected {
-			rowStyle = rowStyle.Background(lipgloss.Color("#2D3C58")).Foreground(lipgloss.Color("#EEF3FC")).ColorWhitespace(true)
-			leftStyle = leftStyle.Foreground(lipgloss.Color("#EEF3FC")).Bold(true)
-			countStyle = countStyle.Foreground(lipgloss.Color("#DFE8F8")).Bold(true)
+			selectedBG := lipgloss.Color("#2D3C58")
+			rowStyle = rowStyle.Background(selectedBG).Foreground(lipgloss.Color("#EEF3FC")).ColorWhitespace(true)
+			leftStyle = leftStyle.Foreground(lipgloss.Color("#EEF3FC")).Background(selectedBG).Bold(true).ColorWhitespace(true)
+			countStyle = countStyle.Foreground(lipgloss.Color("#DFE8F8")).Background(selectedBG).Bold(true).ColorWhitespace(true)
 		}
 	}
 
