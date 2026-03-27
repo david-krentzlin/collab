@@ -393,7 +393,7 @@ With collab: 25 × 200 (checks) + 50 × 500 (selective reads) = 30,000 tokens.
 - **Go** — single binary, no runtime dependencies, easy filesystem ops.
 - **cobra** — CLI framework for subcommands.
 - **golang.org/x/term** — TTY detection for auto-color in `log`.
-- No YAML library — frontmatter is hand-parsed to avoid the dependency.
+- **gopkg.in/yaml.v3** — parse/serialize frontmatter robustly.
 
 ### Project Structure
 

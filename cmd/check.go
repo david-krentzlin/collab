@@ -31,7 +31,12 @@ Messages from the caller are excluded from results.`,
 		}
 		s := store.Find(cwd)
 
-		entries, err := s.List(checkSince, from)
+		var entries []store.MessageEntry
+		if from == "" {
+			entries, err = s.List(checkSince, "")
+		} else {
+			entries, err = s.ListForRecipient(checkSince, from)
+		}
 		if err != nil {
 			return err
 		}

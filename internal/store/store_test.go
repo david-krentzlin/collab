@@ -217,3 +217,67 @@ func TestInitPreservesSequenceProgress(t *testing.T) {
 		t.Fatalf("second seq = %d, want %d", second.Seq, first.Seq+1)
 	}
 }
+
+func TestListForRecipientReturnsDirectAndBroadcastOnly(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{Root: filepath.Join(t.TempDir(), CollabDir, DefaultTask), Task: DefaultTask}
+	if err := s.Init([]string{"agent-a", "agent-b", "agent-c"}); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+
+	msgs := []*message.Message{
+		{From: "agent-a", To: "agent-b", Type: message.Info, TS: message.Now(), Summary: "to b", Status: message.Open, Body: "body"},
+		{From: "agent-a", To: "agent-c", Type: message.Info, TS: message.Now(), Summary: "to c", Status: message.Open, Body: "body"},
+		{From: "agent-c", To: "all", Type: message.Info, TS: message.Now(), Summary: "broadcast", Status: message.Open, Body: "body"},
+	}
+	for _, msg := range msgs {
+		if _, err := s.CreateMessage(msg); err != nil {
+			t.Fatalf("create message: %v", err)
+		}
+	}
+
+	entries, err := s.ListForRecipient(0, "agent-b")
+	if err != nil {
+		t.Fatalf("list for recipient: %v", err)
+	}
+
+	if len(entries) != 2 {
+		t.Fatalf("entry count = %d, want 2", len(entries))
+	}
+	if entries[0].Seq != 1 || entries[1].Seq != 3 {
+		t.Fatalf("got seqs [%d,%d], want [1,3]", entries[0].Seq, entries[1].Seq)
+	}
+}
+
+func TestListForRecipientAppliesSinceAndExcludesSelf(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{Root: filepath.Join(t.TempDir(), CollabDir, DefaultTask), Task: DefaultTask}
+	if err := s.Init([]string{"agent-a", "agent-b", "agent-c"}); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+
+	msgs := []*message.Message{
+		{From: "agent-a", To: "agent-b", Type: message.Info, TS: message.Now(), Summary: "to b", Status: message.Open, Body: "body"},
+		{From: "agent-b", To: "agent-b", Type: message.Info, TS: message.Now(), Summary: "self", Status: message.Open, Body: "body"},
+		{From: "agent-c", To: "all", Type: message.Info, TS: message.Now(), Summary: "broadcast", Status: message.Open, Body: "body"},
+	}
+	for _, msg := range msgs {
+		if _, err := s.CreateMessage(msg); err != nil {
+			t.Fatalf("create message: %v", err)
+		}
+	}
+
+	entries, err := s.ListForRecipient(1, "agent-b")
+	if err != nil {
+		t.Fatalf("list for recipient: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("entry count = %d, want 1", len(entries))
+	}
+	if entries[0].Seq != 3 {
+		t.Fatalf("entry seq = %d, want 3", entries[0].Seq)
+	}
+}

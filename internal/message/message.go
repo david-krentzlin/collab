@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Type string
@@ -44,20 +46,38 @@ type Message struct {
 	Body    string `yaml:"-"`
 }
 
+type frontmatter struct {
+	Seq     int    `yaml:"seq"`
+	From    string `yaml:"from"`
+	To      string `yaml:"to"`
+	Type    Type   `yaml:"type"`
+	Re      int    `yaml:"re,omitempty"`
+	TS      string `yaml:"ts"`
+	Summary string `yaml:"summary"`
+	Status  Status `yaml:"status"`
+}
+
 // Marshal writes a message as markdown with YAML frontmatter.
 func (m *Message) Marshal() []byte {
+	fm := frontmatter{
+		Seq:     m.Seq,
+		From:    m.From,
+		To:      m.To,
+		Type:    m.Type,
+		Re:      m.Re,
+		TS:      m.TS,
+		Summary: m.Summary,
+		Status:  m.Status,
+	}
+
+	frontmatterBytes, err := yaml.Marshal(&fm)
+	if err != nil {
+		panic(fmt.Sprintf("marshal message frontmatter: %v", err))
+	}
+
 	var b strings.Builder
 	b.WriteString("---\n")
-	b.WriteString(fmt.Sprintf("seq: %d\n", m.Seq))
-	b.WriteString(fmt.Sprintf("from: %s\n", m.From))
-	b.WriteString(fmt.Sprintf("to: %s\n", m.To))
-	b.WriteString(fmt.Sprintf("type: %s\n", m.Type))
-	if m.Re > 0 {
-		b.WriteString(fmt.Sprintf("re: %d\n", m.Re))
-	}
-	b.WriteString(fmt.Sprintf("ts: %q\n", m.TS))
-	b.WriteString(fmt.Sprintf("summary: %q\n", m.Summary))
-	b.WriteString(fmt.Sprintf("status: %s\n", m.Status))
+	b.Write(frontmatterBytes)
 	b.WriteString("---\n\n")
 	b.WriteString(m.Body)
 	if !strings.HasSuffix(m.Body, "\n") {
@@ -67,7 +87,6 @@ func (m *Message) Marshal() []byte {
 }
 
 // Unmarshal parses markdown with YAML frontmatter into a Message.
-// Intentionally hand-rolled to avoid a YAML dependency.
 func Unmarshal(data []byte) (*Message, error) {
 	s := string(data)
 	if !strings.HasPrefix(s, "---\n") {
@@ -78,43 +97,56 @@ func Unmarshal(data []byte) (*Message, error) {
 	if end == -1 {
 		return nil, fmt.Errorf("missing closing frontmatter delimiter")
 	}
-	frontmatter := rest[:end]
+	frontmatterText := rest[:end]
 	body := strings.TrimPrefix(rest[end+5:], "\n")
 
-	m := &Message{Body: body}
-	for _, line := range strings.Split(frontmatter, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		key, val, ok := strings.Cut(line, ":")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		val = strings.TrimSpace(val)
-		// strip quotes
-		val = strings.Trim(val, `"`)
-		switch key {
-		case "seq":
-			fmt.Sscanf(val, "%d", &m.Seq)
-		case "from":
-			m.From = val
-		case "to":
-			m.To = val
-		case "type":
-			m.Type = Type(val)
-		case "re":
-			fmt.Sscanf(val, "%d", &m.Re)
-		case "ts":
-			m.TS = val
-		case "summary":
-			m.Summary = val
-		case "status":
-			m.Status = Status(val)
-		}
+	var fm frontmatter
+	if err := yaml.Unmarshal([]byte(frontmatterText), &fm); err != nil {
+		return nil, fmt.Errorf("parse frontmatter yaml: %w", err)
 	}
-	return m, nil
+
+	if fm.Seq <= 0 {
+		return nil, fmt.Errorf("invalid or missing seq")
+	}
+	if strings.TrimSpace(fm.From) == "" {
+		return nil, fmt.Errorf("missing from")
+	}
+	if strings.TrimSpace(fm.To) == "" {
+		return nil, fmt.Errorf("missing to")
+	}
+	if strings.TrimSpace(fm.TS) == "" {
+		return nil, fmt.Errorf("missing ts")
+	}
+	if strings.TrimSpace(fm.Summary) == "" {
+		return nil, fmt.Errorf("missing summary")
+	}
+	if fm.Re < 0 {
+		return nil, fmt.Errorf("invalid re: %d", fm.Re)
+	}
+
+	msgType, err := ValidType(string(fm.Type))
+	if err != nil {
+		return nil, err
+	}
+
+	switch fm.Status {
+	case Open, Resolved:
+		// valid
+	default:
+		return nil, fmt.Errorf("invalid status %q (valid: open, resolved)", fm.Status)
+	}
+
+	return &Message{
+		Seq:     fm.Seq,
+		From:    fm.From,
+		To:      fm.To,
+		Type:    msgType,
+		Re:      fm.Re,
+		TS:      fm.TS,
+		Summary: fm.Summary,
+		Status:  fm.Status,
+		Body:    body,
+	}, nil
 }
 
 func Now() string {

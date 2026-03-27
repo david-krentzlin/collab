@@ -19,6 +19,7 @@ const (
 	TaskEnv     = "COLLAB_TASK"
 	SeqFile     = ".seq"
 	SeqLock     = ".seq.lock"
+	BroadcastTo = "all"
 	seqRetries  = 64
 )
 
@@ -342,6 +343,45 @@ func (s *Store) List(since int, excludeFrom string) ([]MessageEntry, error) {
 			Path:    record.Path,
 		})
 	}
+	return results, nil
+}
+
+// ListForRecipient returns messages addressed to a specific recipient.
+// It excludes messages sent by the recipient and includes broadcast messages (`to: all`).
+func (s *Store) ListForRecipient(since int, recipient string) ([]MessageEntry, error) {
+	if recipient == "" {
+		return s.List(since, "")
+	}
+
+	records, err := s.scanMessages()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []MessageEntry
+	for _, record := range records {
+		msg := record.Message
+		if msg.From == recipient {
+			continue
+		}
+		if since > 0 && msg.Seq <= since {
+			continue
+		}
+		if msg.To != recipient && !strings.EqualFold(msg.To, BroadcastTo) {
+			continue
+		}
+
+		results = append(results, MessageEntry{
+			Seq:     msg.Seq,
+			From:    msg.From,
+			Type:    msg.Type,
+			Re:      msg.Re,
+			Summary: msg.Summary,
+			Status:  msg.Status,
+			Path:    record.Path,
+		})
+	}
+
 	return results, nil
 }
 
