@@ -22,6 +22,7 @@ func TestTUIModelRefreshSelectedConversationRendersPlainMessages(t *testing.T) {
 		t.Fatalf("refresh tasks: %v", err)
 	}
 	m.selectedTaskIdx = findTaskIndex(t, m, "task-a")
+	m.renderMode = renderModeTimeline
 	m.setSize(100, 10)
 
 	if err := m.refreshSelectedConversation(); err != nil {
@@ -29,10 +30,10 @@ func TestTUIModelRefreshSelectedConversationRendersPlainMessages(t *testing.T) {
 	}
 
 	content := m.convoViewport.GetContent()
-	if !strings.Contains(content, "#1 alice [info] message-1") {
+	if !strings.Contains(content, "#1 alice -> bob [info] message-1") {
 		t.Fatalf("missing first message line in viewport content: %q", content)
 	}
-	if !strings.Contains(content, "#2 alice [info] message-2") {
+	if !strings.Contains(content, "#2 alice -> bob [info] message-2") {
 		t.Fatalf("missing second message line in viewport content: %q", content)
 	}
 }
@@ -46,12 +47,12 @@ func TestTUIModelViewportUpdatesSizeOnWindowResize(t *testing.T) {
 		t.Fatalf("expected *tuiModel from update, got %T", next)
 	}
 
-	_, right := resized.paneWidths(120)
-	if got := resized.convoViewport.Width(); got != right {
-		t.Fatalf("viewport width = %d, want %d", got, right)
+	_, middle, _ := resized.paneWidths(120)
+	if got := resized.convoViewport.Width(); got != middle {
+		t.Fatalf("viewport width = %d, want %d", got, middle)
 	}
-	if got := resized.convoViewport.Height(); got != 37 {
-		t.Fatalf("viewport height = %d, want %d", got, 37)
+	if got := resized.convoViewport.Height(); got != 34 {
+		t.Fatalf("viewport height = %d, want %d", got, 34)
 	}
 }
 
@@ -73,6 +74,7 @@ func TestTUIModelAutoFollowKeepsBottomOnNewContent(t *testing.T) {
 	m.selectedTaskIdx = findTaskIndex(t, m, "task-a")
 	m.setSize(80, 6)
 	m.autoFollow = true
+	m.focusedPane = focusThreads
 	if err := m.refreshSelectedConversation(); err != nil {
 		t.Fatalf("refresh selected conversation: %v", err)
 	}
@@ -115,6 +117,7 @@ func TestTUIModelManualScrollUpDisablesAutoFollow(t *testing.T) {
 	m.selectedTaskIdx = findTaskIndex(t, m, "task-a")
 	m.setSize(80, 6)
 	m.autoFollow = true
+	m.focusedPane = focusThreads
 	if err := m.refreshSelectedConversation(); err != nil {
 		t.Fatalf("refresh selected conversation: %v", err)
 	}
@@ -229,10 +232,15 @@ func TestTUIModelRefreshSelectedConversationHandlesCorruptMessageFileGracefully(
 
 func newTUIModelForBase(collabBasePath string) *tuiModel {
 	return &tuiModel{
-		lastSeenByTask: make(map[string]int),
-		collabBasePath: collabBasePath,
-		convoViewport:  viewport.New(),
-		autoFollow:     true,
+		lastSeenByTask:   make(map[string]int),
+		collabBasePath:   collabBasePath,
+		convoViewport:    viewport.New(),
+		detailsViewport:  viewport.New(),
+		autoFollow:       true,
+		renderMode:       renderModeThreaded,
+		focusedPane:      focusTasks,
+		messageBySeq:     make(map[int]*message.Message),
+		collapsedThreads: make(map[int]bool),
 	}
 }
 

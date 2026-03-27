@@ -23,6 +23,7 @@ func TestTUIModelThreadedFormattingShowsParentChildStructure(t *testing.T) {
 		t.Fatalf("refresh tasks: %v", err)
 	}
 	m.selectedTaskIdx = findTaskIndex(t, m, "thread-task")
+	m.renderMode = renderModeThreaded
 
 	if err := m.refreshSelectedConversation(); err != nil {
 		t.Fatalf("refresh conversation: %v", err)
@@ -32,10 +33,10 @@ func TestTUIModelThreadedFormattingShowsParentChildStructure(t *testing.T) {
 	if !strings.Contains(content, "#1 alice [reply] root") {
 		t.Fatalf("missing root line: %q", content)
 	}
-	if !strings.Contains(content, "├─ #2 bob [reply] child-a") {
+	if !strings.Contains(content, "│ ├─ #2 bob [reply] child-a") {
 		t.Fatalf("missing sibling child-a connector: %q", content)
 	}
-	if !strings.Contains(content, "└─ #3 carol [reply] child-b") {
+	if !strings.Contains(content, "│ └─ #3 carol [reply] child-b") {
 		t.Fatalf("missing sibling child-b connector: %q", content)
 	}
 }
@@ -53,16 +54,17 @@ func TestTUIModelThreadedFormattingShowsNestedReplyDepth(t *testing.T) {
 		t.Fatalf("refresh tasks: %v", err)
 	}
 	m.selectedTaskIdx = findTaskIndex(t, m, "depth-task")
+	m.renderMode = renderModeThreaded
 
 	if err := m.refreshSelectedConversation(); err != nil {
 		t.Fatalf("refresh conversation: %v", err)
 	}
 
 	content := m.convoViewport.GetContent()
-	if !strings.Contains(content, "└─ #2 bob [reply] level-1") {
+	if !strings.Contains(content, "│ └─ #2 bob [reply] level-1") {
 		t.Fatalf("missing level-1 nested connector: %q", content)
 	}
-	if !strings.Contains(content, "   └─ #3 carol [reply] level-2") {
+	if !strings.Contains(content, "│    └─ #3 carol [reply] level-2") {
 		t.Fatalf("missing level-2 nested indentation: %q", content)
 	}
 }
@@ -80,6 +82,7 @@ func TestTUIModelThreadedFormattingClearlyDenotesSpeaker(t *testing.T) {
 		t.Fatalf("refresh tasks: %v", err)
 	}
 	m.selectedTaskIdx = findTaskIndex(t, m, "speaker-task")
+	m.renderMode = renderModeThreaded
 
 	if err := m.refreshSelectedConversation(); err != nil {
 		t.Fatalf("refresh conversation: %v", err)
@@ -105,6 +108,7 @@ func TestTUIModelThreadedFormattingHandlesOrphanRepliesGracefully(t *testing.T) 
 		t.Fatalf("refresh tasks: %v", err)
 	}
 	m.selectedTaskIdx = findTaskIndex(t, m, "orphan-task")
+	m.renderMode = renderModeThreaded
 
 	if err := m.refreshSelectedConversation(); err != nil {
 		t.Fatalf("refresh conversation: %v", err)

@@ -13,8 +13,8 @@ func TestTUIModelViewRendersTwoPaneHeaders(t *testing.T) {
 
 	view := m.View().Content
 	lines := strings.Split(view, "\n")
-	if len(lines) < 3 {
-		t.Fatalf("expected at least 3 lines in view, got %d", len(lines))
+	if len(lines) < 6 {
+		t.Fatalf("expected framed layout lines, got %d", len(lines))
 	}
 
 	if !strings.Contains(lines[0], "collab viewer") {
@@ -23,11 +23,47 @@ func TestTUIModelViewRendersTwoPaneHeaders(t *testing.T) {
 	if !strings.Contains(view, "Tasks") {
 		t.Fatalf("view missing Tasks header: %q", view)
 	}
-	if !strings.Contains(view, "Conversations") {
-		t.Fatalf("view missing Conversations header: %q", view)
+	if !strings.Contains(view, "Threads") {
+		t.Fatalf("view missing Threads header: %q", view)
 	}
-	if !strings.Contains(lines[1], "│") {
+	if !strings.Contains(view, "Details") {
+		t.Fatalf("view missing Details header: %q", view)
+	}
+	if !strings.Contains(lines[2], "│") {
 		t.Fatalf("header should contain pane separator: %q", view)
+	}
+	if !strings.Contains(lines[1], "┌") || !strings.Contains(lines[1], "┬") || !strings.Contains(lines[1], "┐") {
+		t.Fatalf("missing top frame border: %q", lines[1])
+	}
+	bottom := lines[len(lines)-2]
+	if !strings.Contains(bottom, "└") || !strings.Contains(bottom, "┴") || !strings.Contains(bottom, "┘") {
+		t.Fatalf("missing bottom frame border: %q", bottom)
+	}
+
+	if !strings.Contains(lines[len(lines)-1], "q quit") {
+		t.Fatalf("footer hint row missing expected quit hint: %q", lines[len(lines)-1])
+	}
+}
+
+func TestTUIModelViewRendersFooterHints(t *testing.T) {
+	m := newTUIModel()
+	m.setSize(90, 12)
+
+	view := m.View().Content
+	lines := strings.Split(view, "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected at least topbar+footer, got %d lines", len(lines))
+	}
+
+	footer := lines[len(lines)-1]
+	if !strings.Contains(footer, "↑/↓ select") {
+		t.Fatalf("footer missing selection hint: %q", footer)
+	}
+	if !strings.Contains(footer, "PgUp/PgDn scroll") {
+		t.Fatalf("footer missing scroll hint: %q", footer)
+	}
+	if !strings.Contains(footer, "q quit") {
+		t.Fatalf("footer missing quit hint: %q", footer)
 	}
 }
 
@@ -37,15 +73,20 @@ func TestTUIModelViewUsesContinuousVerticalDivider(t *testing.T) {
 
 	view := m.View().Content
 	lines := strings.Split(view, "\n")
-	if len(lines) < 4 {
+	if len(lines) < 6 {
 		t.Fatalf("expected enough lines for topbar+header+body, got %d", len(lines))
 	}
 
-	headerLine := lines[1]
+	headerLine := lines[2]
 	headerRunes := []rune(headerLine)
 	dividerIdx := -1
 	for i, r := range headerRunes {
 		if r == '│' {
+			// first divider is left frame border, second is center split
+			if dividerIdx == -1 {
+				dividerIdx = i
+				continue
+			}
 			dividerIdx = i
 			break
 		}
@@ -54,12 +95,12 @@ func TestTUIModelViewUsesContinuousVerticalDivider(t *testing.T) {
 		t.Fatalf("expected divider glyph in header line, got %q", headerLine)
 	}
 
-	for i := 2; i < len(lines); i++ {
+	for i := 1; i < len(lines)-1; i++ {
 		lineRunes := []rune(lines[i])
 		if dividerIdx >= len(lineRunes) {
 			t.Fatalf("line %d too short for divider index %d: %q", i, dividerIdx, lines[i])
 		}
-		if lineRunes[dividerIdx] != '│' && lineRunes[dividerIdx] != '┼' {
+		if lineRunes[dividerIdx] != '│' && lineRunes[dividerIdx] != '┼' && lineRunes[dividerIdx] != '┬' && lineRunes[dividerIdx] != '┴' {
 			t.Fatalf("line %d missing continuous divider at column %d: %q", i, dividerIdx, lines[i])
 		}
 	}
@@ -78,12 +119,12 @@ func TestTUIModelWindowResizeUpdatesDimensions(t *testing.T) {
 		t.Fatalf("dimensions = (%d,%d), want (120,40)", resized.width, resized.height)
 	}
 
-	left, right := resized.paneWidths(120)
-	if left <= 0 || right <= 0 {
-		t.Fatalf("pane widths must be positive, got left=%d right=%d", left, right)
+	tasks, threads, details := resized.paneWidths(120)
+	if tasks <= 0 || threads <= 0 || details <= 0 {
+		t.Fatalf("pane widths must be positive, got tasks=%d threads=%d details=%d", tasks, threads, details)
 	}
-	if left+right+tuiPaneSeparatorWidth != 120 {
-		t.Fatalf("pane widths should fill full width: left=%d right=%d sep=%d", left, right, tuiPaneSeparatorWidth)
+	if tasks+threads+details+tuiPaneSeparatorWidth != 120 {
+		t.Fatalf("pane widths should fill full width: tasks=%d threads=%d details=%d sep=%d", tasks, threads, details, tuiPaneSeparatorWidth)
 	}
 }
 
