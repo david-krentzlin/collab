@@ -491,7 +491,15 @@ func (m *tuiModel) renderTaskPaneRow(i, width int) string {
 		return rowStyle.Render(leftCell)
 	}
 	countCell := countStyle.Render(countText)
-	return rowStyle.Render(lipgloss.JoinHorizontal(lipgloss.Top, leftCell, " ", countCell))
+	separator := " "
+	if m.colorEnabled {
+		sepBG := lipgloss.Color("#000000")
+		if selected {
+			sepBG = lipgloss.Color("#2D3C58")
+		}
+		separator = lipgloss.NewStyle().Background(sepBG).ColorWhitespace(true).Render(" ")
+	}
+	return rowStyle.Render(lipgloss.JoinHorizontal(lipgloss.Top, leftCell, separator, countCell))
 }
 
 func (m *tuiModel) markSelectedTaskSeen() {
