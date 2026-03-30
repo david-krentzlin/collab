@@ -1,5 +1,7 @@
 # collab — Agent-to-Agent Pair Programming
 
+**ATTENTION: highly experimental prototype. Use at your own risk**
+
 A filesystem-based communication protocol for AI agents working on the same codebase. Designed for token efficiency: agents poll summaries cheaply and only read full messages when needed.
 
 ## Architecture
